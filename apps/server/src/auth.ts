@@ -8,6 +8,7 @@ import {
   type MailAuth,
 } from "@mailfast/auth";
 import { authSchema, type MailStore } from "@mailfast/db";
+import { env } from "@mailfast/env/server";
 import type { AuthStatus } from "@mailfast/shared";
 
 /**
@@ -37,7 +38,7 @@ export class Auth {
 
   /** Secret for Better Auth: from Electron (OS keychain via safeStorage), else generated and kept in the DB. */
   static secretFor(store: MailStore, fromEnv: string | undefined): string {
-    if (fromEnv && fromEnv.length >= 32) return fromEnv;
+    if (fromEnv) return fromEnv; // length validated by @mailfast/env
     let s = store.kvGet("secret_key_fallback");
     if (!s) {
       s = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
@@ -60,7 +61,7 @@ export class Auth {
 
   /** Env vars win over the config saved from the setup screen. */
   client(): GoogleClient | null {
-    const { GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: secret } = process.env;
+    const { GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: secret } = env;
     if (id && secret) return { clientId: id, clientSecret: secret };
     const saved = this.store.kvGet("oauth_client");
     return saved ? (JSON.parse(saved) as GoogleClient) : null;

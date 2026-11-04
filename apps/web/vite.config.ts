@@ -1,10 +1,11 @@
 import { defineConfig } from "vite-plus";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
+import { env } from "@mailfast/env/web";
 
 // The Bun sidecar owns the API. In dev, Electron starts it on a fixed port and
 // Vite proxies /api to it, so the renderer always uses same-origin `/api`.
-const apiPort = process.env.MAILFAST_PORT ?? "47821";
+const apiPort = env.MAILFAST_PORT;
 
 export default defineConfig({
   resolve: { tsconfigPaths: true },

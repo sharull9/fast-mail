@@ -1,0 +1,23 @@
+{
+  "name": "@mailfast/env",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server.ts",
+    "./desktop": "./src/desktop.ts",
+    "./web": "./src/web.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "^0.13.11",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.2"
+  }
+}

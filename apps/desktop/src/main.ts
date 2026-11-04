@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell } from "electron";
+import { env as desktopEnv } from "@mailfast/env/desktop";
 import { AUTH_HEADER } from "@mailfast/shared";
 
 /**
@@ -16,8 +17,8 @@ import { AUTH_HEADER } from "@mailfast/shared";
  *     (serving the prerendered TanStack Start SPA) in production.
  */
 const isDev = !app.isPackaged;
-const DEV_URL = process.env.MAILFAST_DEV_URL ?? "http://localhost:5199";
-const DEV_API_PORT = process.env.MAILFAST_PORT ?? "47821";
+const DEV_URL = desktopEnv.MAILFAST_DEV_URL.replace(/\/$/, "");
+const DEV_API_PORT = String(desktopEnv.MAILFAST_PORT);
 
 let win: BrowserWindow | null = null;
 let server: ChildProcess | null = null;
@@ -156,13 +157,13 @@ function createWindow(url: string) {
   // Links leaving the app open in the system browser.
   const appOrigin = new URL(url).origin;
   win.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (target.startsWith("https://")) void shell.openExternal(target);
+    openInBrowser(target);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (e, target) => {
     if (new URL(target).origin !== appOrigin) {
       e.preventDefault();
-      if (target.startsWith("https://")) void shell.openExternal(target);
+      openInBrowser(target);
     }
   });
   void win.loadURL(url);
@@ -182,9 +183,26 @@ function fatal(err: unknown) {
   app.quit();
 }
 
-ipcMain.on("open-external", (_e, url: unknown) => {
-  if (typeof url === "string" && url.startsWith("https://")) void shell.openExternal(url);
-});
+/**
+ * Opens a URL in the system browser. Allowed: any https URL, and the sidecar's
+ * own sign-in entry point (http://127.0.0.1:<port>/auth/start), which must run
+ * in the real browser because Google blocks OAuth in embedded webviews.
+ */
+function openInBrowser(target: unknown) {
+  if (typeof target !== "string") return;
+  let url: URL;
+  try {
+    url = new URL(target);
+  } catch {
+    return console.warn(`[open-external] rejected invalid URL`);
+  }
+  const isSignIn = apiOrigin !== "" && url.origin === apiOrigin && url.pathname === "/auth/start";
+  if (url.protocol !== "https:" && !isSignIn)
+    return console.warn(`[open-external] rejected ${url.origin}${url.pathname}`);
+  shell.openExternal(url.toString()).catch((err: unknown) => console.error("[open-external] failed:", err));
+}
+
+ipcMain.on("open-external", (_e, url: unknown) => openInBrowser(url));
 
 app.on("second-instance", () => {
   if (win) {

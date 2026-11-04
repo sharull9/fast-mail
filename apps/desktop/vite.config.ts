@@ -12,6 +12,6 @@ export default defineConfig({
     clean: true,
     dts: false,
     fixedExtension: true,
-    deps: { neverBundle: ["electron"], alwaysBundle: [/^@mailfast\//] },
+    deps: { neverBundle: ["electron"], alwaysBundle: [/^@mailfast\//, /^@t3-oss\//, /^zod/] },
   },
 });

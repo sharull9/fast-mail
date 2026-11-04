@@ -13,6 +13,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@mailfast/env": "workspace:*",
     "@mailfast/shared": "workspace:*",
     "@types/node": "^24.10.0",
     "electron": "^45.2.2",

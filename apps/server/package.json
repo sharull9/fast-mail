@@ -12,6 +12,7 @@
   "dependencies": {
     "@mailfast/auth": "workspace:*",
     "@mailfast/db": "workspace:*",
+    "@mailfast/env": "workspace:*",
     "@mailfast/shared": "workspace:*"
   },
   "devDependencies": {

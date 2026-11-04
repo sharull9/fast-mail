@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { openMailStore } from "@mailfast/db";
+import { env } from "@mailfast/env/server";
 import { AUTH_HEADER, type ListThreadsResponse, type ThreadAction, type ThreadDetail } from "@mailfast/shared";
 import { Auth, AuthError } from "./auth.ts";
 import { Events } from "./events.ts";
@@ -15,7 +16,6 @@ import { SyncEngine } from "./sync.ts";
  *    so the renderer never holds it and other local processes can't call us
  *  - prints `READY {json}` on stdout once listening
  */
-const env = process.env;
 const dataDir = resolve(env.MAILFAST_DATA_DIR ?? join(import.meta.dir, "../.data"));
 mkdirSync(dataDir, { recursive: true });
 const apiToken = env.MAILFAST_TOKEN ?? crypto.randomUUID();
@@ -56,7 +56,7 @@ async function body<T>(req: Request): Promise<T> {
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
-  port: Number(env.MAILFAST_PORT ?? 0),
+  port: env.MAILFAST_PORT,
   idleTimeout: 60,
   routes: {
     // Google sign-in in the system browser, handled by Better Auth. No API token here:
@@ -196,7 +196,7 @@ async function serveStatic(path: string): Promise<Response> {
 }
 
 // Exit with the parent (Electron) so the sidecar never outlives the app.
-const parentPid = Number(env.MAILFAST_PARENT_PID ?? 0);
+const parentPid = env.MAILFAST_PARENT_PID ?? 0;
 if (parentPid > 0) {
   setInterval(() => {
     try {
