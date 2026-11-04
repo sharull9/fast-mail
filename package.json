@@ -1,0 +1,46 @@
+{
+  "name": "mailfast",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp run --parallel -F @mailfast/web -F @mailfast/desktop dev",
+    "dev:web": "vp run @mailfast/web#dev",
+    "build": "vp run -r build",
+    "test": "vp run -r test",
+    "check": "vp check && vp run -r check",
+    "db:generate": "vp run @mailfast/db#generate",
+    "dist": "vp run @mailfast/desktop#dist",
+    "ready": "vp check && vp run -r test && vp run -r build"
+  },
+  "devDependencies": {
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "overrides": {
+    "vite": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.4.4",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.0",
+    "vite-plus": "1.5.0"
+  },
+  "trustedDependencies": [
+    "electron",
+    "esbuild"
+  ]
+}

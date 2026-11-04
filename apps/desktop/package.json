@@ -1,0 +1,23 @@
+{
+  "name": "@mailfast/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mailfast: a fast Gmail client",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack && electron .",
+    "start": "electron .",
+    "dist": "vp run @mailfast/web#build && vp run @mailfast/server#build && vp pack && electron-builder --config electron-builder.yml",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@mailfast/shared": "workspace:*",
+    "@types/node": "^24.10.0",
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0",
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:"
+  }
+}

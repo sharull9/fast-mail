@@ -1,0 +1,24 @@
+appId: dev.mailfast.app
+productName: Mailfast
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+extraResources:
+  # Bun sidecar compiled to a single executable (apps/server: `bun build --compile`).
+  - from: ../server/dist/
+    to: server/
+  # Prerendered TanStack Start SPA served by the sidecar.
+  - from: ../web/dist/client/
+    to: web/
+  # Drizzle migrations, applied by the sidecar at startup.
+  - from: ../../packages/db/migrations/
+    to: migrations/
+win:
+  target: nsis
+mac:
+  target: dmg
+  category: public.app-category.productivity
+linux:
+  target: AppImage

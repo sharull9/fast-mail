@@ -1,0 +1,22 @@
+{
+  "name": "@mailfast/auth",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate:schema": "bunx auth@latest generate --config src/cli-config.ts --output ../db/src/auth-schema.ts --yes",
+    "test": "bun test",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mailfast/db": "workspace:*",
+    "better-auth": "^1.7.17",
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^6.0.2"
+  }
+}
