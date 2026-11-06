@@ -1,4 +1,4 @@
-"use client";
+import { HotkeyOverlay } from "@/components/hotkey-overlay";
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ function DropdownMenuTrigger({ ...props }: React.ComponentProps<typeof DropdownM
 function DropdownMenuContent({
   className,
   sideOffset = 4,
+  children,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
@@ -32,7 +33,9 @@ function DropdownMenuContent({
           className,
         )}
         {...props}
-      />
+      >
+        <HotkeyOverlay>{children}</HotkeyOverlay>
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );
 }

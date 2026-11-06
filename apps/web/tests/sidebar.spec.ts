@@ -143,7 +143,7 @@ test("collapsed search matches the navigation icons and opens the command menu",
     }),
   ).toBe(true);
   await search.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Search mail (Ctrl K)");
+  await expect(page.getByRole("tooltip")).toHaveText("Search mail (Ctrl+K)");
   await search.click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });

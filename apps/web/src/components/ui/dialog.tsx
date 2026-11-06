@@ -1,4 +1,4 @@
-"use client";
+import { HotkeyOverlay } from "@/components/hotkey-overlay";
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -55,7 +55,7 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        <HotkeyOverlay>{children}</HotkeyOverlay>
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"

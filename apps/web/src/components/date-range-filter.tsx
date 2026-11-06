@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { statusQuery } from "@/lib/data";
 import { CalendarIcon, X } from "lucide-react";
 import type { DateRange as CalendarRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
@@ -7,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { activeFilterBadge, compactFilterBadge, compactHidden, filterBadge } from "@/components/scope-filter";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { dateParam, localDate, type DateRange } from "@/lib/format";
+import { clampDateRange, dateParam, localDate, type DateRange } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const presets = [
@@ -58,6 +60,10 @@ export function DateRangeFilter({ range, onChange }: { range: DateRange; onChang
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<CalendarRange>();
   const isMobile = useIsMobile();
+  const { data: status } = useQuery(statusQuery);
+  const oldestMessageDate = status?.oldestMessageDate;
+  const oldest = oldestMessageDate == null ? undefined : localDate(dateParam(new Date(oldestMessageDate)));
+  console.log(oldestMessageDate, "oldest");
   const today = localDate(dateParam(new Date()));
   const active = !!(range.from || range.to);
   const label =
@@ -69,7 +75,7 @@ export function DateRangeFilter({ range, onChange }: { range: DateRange; onChang
           ? `Until ${compactDate.format(localDate(range.to))}`
           : "Any time";
   const apply = (next: DateRange) => {
-    onChange(next);
+    onChange(clampDateRange(next, oldestMessageDate));
     setOpen(false);
   };
   return (
@@ -117,29 +123,42 @@ export function DateRangeFilter({ range, onChange }: { range: DateRange; onChang
               className="flex shrink-0 flex-wrap gap-1 border-b p-2 sm:w-36 sm:flex-col sm:border-r sm:border-b-0"
               aria-label="Date presets"
             >
-              {presets.map((name) => (
-                <Button
-                  key={name}
-                  variant="ghost"
-                  size="sm"
-                  className="justify-start"
-                  onClick={() => apply(presetRange(name))}
-                >
-                  {name}
-                </Button>
-              ))}
+              {presets.map((name) => {
+                const preset = presetRange(name);
+                return (
+                  <Button
+                    key={name}
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start"
+                    disabled={!!oldest && !!preset.to && localDate(preset.to) < oldest}
+                    onClick={() => apply(preset)}
+                  >
+                    {name}
+                  </Button>
+                );
+              })}
             </div>
             <div className="min-w-0">
               <Calendar
                 mode="range"
-                disabled={{ after: today }}
+                disabled={oldest ? [{ before: oldest }, { after: today }] : { after: today }}
+                startMonth={oldest}
                 endMonth={today}
                 numberOfMonths={isMobile ? 1 : 2}
                 selected={draft}
                 onSelect={setDraft}
                 defaultMonth={draft?.from ?? (range.to ? localDate(range.to) : undefined)}
               />
-              <div className="flex justify-end gap-2 border-t p-2">
+              <div className="flex items-center justify-end gap-2 border-t p-2">
+                {oldest && (
+                  <span className="mr-auto text-xs text-muted-foreground">
+                    Mail from{" "}
+                    {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(
+                      oldest,
+                    )}
+                  </span>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => apply({})}>
                   Clear
                 </Button>

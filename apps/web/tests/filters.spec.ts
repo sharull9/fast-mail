@@ -27,7 +27,7 @@ const threads: ThreadRow[] = [
   labelIds: ["INBOX", "IMPORTANT", "STARRED"],
 }));
 
-async function mockMail(page: Page) {
+async function mockMail(page: Page, oldestMessageDate: number | null = null) {
   await page.clock.setFixedTime(today);
   const overrides = Object.fromEntries(
     threads.map((thread) => {
@@ -60,7 +60,7 @@ async function mockMail(page: Page) {
         body = { configured: true, signedIn: true, account: "me@example.com" };
         break;
       case "/api/status":
-        body = { phase: "idle", messagesStored: 3, pendingActions: 0, backfillDone: true };
+        body = { phase: "idle", messagesStored: 3, pendingActions: 0, backfillDone: true, oldestMessageDate };
         break;
       case "/api/events":
         await route.fulfill({ contentType: "text/event-stream", body: "" });
@@ -234,4 +234,39 @@ test("invalid dates are ignored and category labels activate Inbox", async ({ pa
   await expect(page.getByRole("radio", { name: /^Inbox/ })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("button", { name: "Date range: Any time" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Social", exact: true })).toHaveAttribute("aria-selected", "true");
+});
+
+test("calendar stops at the oldest mail day and month and shows the bound", async ({ page }) => {
+  const oldest = new Date(today.getFullYear(), today.getMonth() - 2, 12);
+  const before = new Date(oldest);
+  before.setDate(before.getDate() - 1);
+  await mockMail(page, oldest.getTime());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/mail/INBOX?from=${dateKey(oldest)}&to=${dateKey(today)}`);
+  await page.getByRole("button", { name: /^Date range:/ }).click();
+  const calendar = page.locator('[data-slot="calendar"]');
+  await expect(calendar.locator(`button[data-day="${before.toLocaleDateString("en-US")}"]`)).toBeDisabled();
+  await expect(calendar.getByRole("button", { name: "Go to the Previous Month" })).toBeDisabled();
+  const label = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(oldest);
+  await expect(page.getByText(`Mail from ${label}`, { exact: true })).toBeVisible();
+});
+
+test("URL ranges clamp to the oldest local day and drop wholly older ranges", async ({ page }) => {
+  const oldest = dayOffset(-7);
+  await mockMail(page, oldest.getTime());
+  await page.goto(`/mail/INBOX?from=${dateKey(dayOffset(-30))}&to=${dateKey(today)}`);
+  await expect(page).toHaveURL(new RegExp(`from=${dateKey(oldest)}&to=${dateKey(today)}$`));
+  await page.goto(`/mail/INBOX?from=${dateKey(dayOffset(-30))}&to=${dateKey(dayOffset(-8))}`);
+  await expect(page).toHaveURL(/\/mail\/INBOX$/);
+  await expect(page.locator('[data-thread-id="recent"]')).toBeVisible();
+});
+
+test("presets clamp partial ranges and disable ranges before the oldest mail", async ({ page }) => {
+  await mockMail(page, today.getTime());
+  await page.goto("/mail/INBOX");
+  await page.getByRole("button", { name: "Date range: Any time" }).click();
+  await expect(page.getByRole("button", { name: "Yesterday", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Last month", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "This year", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`from=${dateKey(today)}&to=${dateKey(today)}$`));
 });

@@ -114,6 +114,7 @@ export interface SyncStatus {
   phase: SyncPhase;
   account: string | null;
   messagesStored: number;
+  oldestMessageDate: number | null;
   backfillDone: boolean;
   lastSyncAt: number | null;
   pendingActions: number;

@@ -58,6 +58,7 @@ function fixture() {
       phase: "idle",
       account: auth.account(id),
       messagesStored: 0,
+      oldestMessageDate: null,
       backfillDone: true,
       lastSyncAt: null,
       pendingActions: 0,

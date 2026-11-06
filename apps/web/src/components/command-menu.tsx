@@ -1,3 +1,4 @@
+import { shortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -22,15 +23,15 @@ import {
   CommandEmpty,
 } from "@/components/ui/command";
 
-const ACTIONS: { name: string; action: ThreadAction; shortcut?: string }[] = [
-  { name: "Archive", action: { kind: "archive" }, shortcut: "e" },
+const ACTIONS: { name: string; action: ThreadAction; shortcut?: ShortcutId }[] = [
+  { name: "Archive", action: { kind: "archive" }, shortcut: "archive" },
   { name: "Move to inbox", action: { kind: "inbox" } },
-  { name: "Trash", action: { kind: "trash" }, shortcut: "#" },
+  { name: "Trash", action: { kind: "trash" }, shortcut: "trash" },
   { name: "Restore from trash", action: { kind: "untrash" } },
-  { name: "Mark read", action: { kind: "read" }, shortcut: "I" },
-  { name: "Mark unread", action: { kind: "unread" }, shortcut: "U" },
-  { name: "Star", action: { kind: "star" }, shortcut: "s" },
-  { name: "Unstar", action: { kind: "unstar" }, shortcut: "s" },
+  { name: "Mark read", action: { kind: "read" }, shortcut: "read" },
+  { name: "Mark unread", action: { kind: "unread" }, shortcut: "unread" },
+  { name: "Star", action: { kind: "star" }, shortcut: "star" },
+  { name: "Unstar", action: { kind: "unstar" }, shortcut: "star" },
   { name: "Mark important", action: { kind: "important" } },
   { name: "Mark unimportant", action: { kind: "unimportant" } },
 ];
@@ -40,7 +41,7 @@ type MenuCommand = {
   name: string;
   token: string;
   icon: string;
-  shortcut?: string;
+  shortcut?: ShortcutId;
   /** Rendered in the destructive colour (delete, sign out). */
   destructive?: boolean;
   run: () => void | Promise<void>;
@@ -52,6 +53,7 @@ export function CommandMenu({
   onClose,
   onToggleSidebar,
   onPairBrowser,
+  onKeyboardShortcuts,
   initialQuery,
 }: {
   open: boolean;
@@ -59,6 +61,7 @@ export function CommandMenu({
   onClose: () => void;
   onToggleSidebar: () => void;
   onPairBrowser: () => void;
+  onKeyboardShortcuts: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -133,6 +136,15 @@ export function CommandMenu({
       token: "sidebar",
       icon: "panel",
       run: onToggleSidebar,
+      disabled: false,
+    },
+    {
+      id: "global:shortcuts",
+      name: "Keyboard shortcuts",
+      token: "shortcuts",
+      icon: "command",
+      shortcut: "shortcuts",
+      run: onKeyboardShortcuts,
       disabled: false,
     },
     {
@@ -307,7 +319,9 @@ export function CommandMenu({
               <Icon name="close" />
             </Button>
           ) : (
-            <kbd className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">Esc</kbd>
+            <kbd className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              {shortcutLabel("close")}
+            </kbd>
           )
         }
       />
@@ -377,7 +391,7 @@ export function CommandMenu({
                             <span className="font-mono text-xs text-muted-foreground">{item.detail}</span>
                             {item.shortcut && (
                               <kbd className="rounded border px-1.5 text-[11px] text-muted-foreground">
-                                {item.shortcut}
+                                {shortcutLabel(item.shortcut)}
                               </kbd>
                             )}
                           </span>
@@ -401,7 +415,11 @@ export function CommandMenu({
           {value.trim() ? `${threads.length + matchingCommands.length} results` : "Type @ for commands"}
         </span>
         <span className="flex items-center gap-1">
-          {["↑↓ navigate", "↵ open", "esc close"].map((hint) => (
+          {[
+            `${shortcutLabel("previousArrow")}${shortcutLabel("nextArrow")} navigate`,
+            `${shortcutLabel("open")} open`,
+            `${shortcutLabel("close")} close`,
+          ].map((hint) => (
             <kbd key={hint} className="rounded border px-1.5 py-0.5 font-sans">
               {hint}
             </kbd>

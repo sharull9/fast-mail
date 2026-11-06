@@ -62,6 +62,7 @@ export class SyncEngine {
       phase: signedIn ? this.phase : "signed-out",
       account: this.me,
       messagesStored: this.store.messageCount(),
+      oldestMessageDate: this.store.oldestMessageDate(),
       backfillDone: this.store.kvGet("backfill_done") === "1",
       lastSyncAt: this.lastSyncAt,
       pendingActions: this.store.outboxCount(),
@@ -111,7 +112,9 @@ export class SyncEngine {
   private store_(msgs: MessageInput[], opts: { onlyNew?: boolean } = {}) {
     const rows = opts.onlyNew ? msgs.filter((m) => !this.store.hasMessage(m.id)) : msgs;
     if (rows.length === 0) return;
+    const oldest = this.store.oldestMessageDate();
     const changed = this.store.upsertMessages(rows, this.me);
+    if (this.store.oldestMessageDate() !== oldest) this.events.send({ type: "status", status: this.status() });
     for (const threadId of new Set(rows.map((m) => m.threadId))) {
       for (const action of this.store.outboxActionsFor(threadId)) {
         const d = actionDelta(action);

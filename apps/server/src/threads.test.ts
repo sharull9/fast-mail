@@ -156,3 +156,36 @@ test("window fallback paginates Gmail at interactive priority, stores full threa
   await sync.ensureLabel("TRASH", { after: 0 });
   expect(list.mock.calls[2]?.[0]).toMatchObject({ labelId: "TRASH", includeSpamTrash: true });
 });
+
+test("oldest cached message date is indexed, cached and refreshed after writes and deletes", () => {
+  const store = fixture();
+  expect(store.oldestMessageDate()).toBeNull();
+  store.upsertMessages([message("new", 200), message("old", 100, ["TRASH"])], null);
+  expect(store.oldestMessageDate()).toBe(100);
+  expect(store.oldestMessageDate()).toBe(100);
+  const plan = store.sqlite.query("EXPLAIN QUERY PLAN SELECT MIN(internal_date) FROM messages").all();
+  expect(JSON.stringify(plan)).toContain("COVERING INDEX messages_date");
+  store.upsertMessages([message("earliest", 50)], null);
+  expect(store.oldestMessageDate()).toBe(50);
+  store.upsertMessages([message("earliest", 300)], null);
+  expect(store.oldestMessageDate()).toBe(100);
+  store.deleteMessages(["old"], null);
+  expect(store.oldestMessageDate()).toBe(200);
+  store.clearMailbox();
+  expect(store.oldestMessageDate()).toBeNull();
+});
+
+test("sync status and status events expose the oldest cached message date", async () => {
+  const { store, sync, gmail, events } = runtime(fixture());
+  const send = mock(events.send.bind(events));
+  events.send = send;
+  expect(sync.status().oldestMessageDate).toBeNull();
+  gmail.thread = mock(async (id) => [message(id, id === "old" ? 100 : 200)]);
+  await sync.ensureThread("new");
+  expect(sync.status().oldestMessageDate).toBe(200);
+  await sync.ensureThread("old");
+  expect(sync.status().oldestMessageDate).toBe(100);
+  expect(send).toHaveBeenCalledWith({ type: "status", status: expect.objectContaining({ oldestMessageDate: 100 }) });
+  store.deleteMessages(["new", "old"], null);
+  expect(sync.status().oldestMessageDate).toBeNull();
+});

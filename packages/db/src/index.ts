@@ -118,6 +118,14 @@ export function openMailStore(opts: OpenOptions) {
   const db = drizzle({ client: sqlite, schema });
   migrate(db, { migrationsFolder: opts.migrationsFolder ?? DEFAULT_MIGRATIONS });
 
+  // The thread/date index cannot serve an account-wide MIN(internal_date).
+  sqlite.exec("CREATE INDEX IF NOT EXISTS messages_date ON messages (internal_date)");
+  const oldestQuery = db
+    .select({ date: sql<number | null>`MIN(${messages.internalDate})` })
+    .from(messages)
+    .prepare();
+  let oldestMessageDate: number | null | undefined;
+
   // Hot-path prepared statements.
   const p = {
     kvGet: db
@@ -253,6 +261,10 @@ export function openMailStore(opts: OpenOptions) {
       }
       return ids.filter((id) => !have.has(id));
     },
+    oldestMessageDate(): number | null {
+      if (oldestMessageDate === undefined) oldestMessageDate = oldestQuery.get()?.date ?? null;
+      return oldestMessageDate;
+    },
     messageCount(): number {
       return db.select({ n: count() }).from(messages).get()!.n;
     },
@@ -260,6 +272,7 @@ export function openMailStore(opts: OpenOptions) {
     /** Upserts messages and refreshes their threads atomically. Returns changed label ids. */
     upsertMessages(msgs: MessageInput[], me: string | null): Set<string> {
       if (msgs.length === 0) return new Set();
+      oldestMessageDate = undefined;
       return db.transaction(() => {
         const touched = new Set<string>();
         for (const m of msgs) {
@@ -307,6 +320,7 @@ export function openMailStore(opts: OpenOptions) {
 
     deleteMessages(ids: string[], me: string | null): Set<string> {
       if (ids.length === 0) return new Set();
+      oldestMessageDate = undefined;
       return db.transaction(() => {
         const touched = new Set<string>();
         for (const id of ids) {
@@ -471,6 +485,7 @@ export function openMailStore(opts: OpenOptions) {
 
     /** Wipes mailbox data (sign-out / account switch). OAuth client config in kv is kept. */
     clearMailbox() {
+      oldestMessageDate = undefined;
       db.transaction(() => {
         for (const t of [messages, threads, threadLabels, labels, outbox]) db.delete(t).run();
         db.run(sql`DELETE FROM messages_fts`);

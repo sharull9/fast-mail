@@ -1,4 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { HotkeysProvider, useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
+import { appHotkeys, accountHotkeys, shortcutLabel } from "@/lib/hotkeys";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import {
   ClientOnly,
   HeadContent,
@@ -96,7 +99,13 @@ function Root() {
     <QueryClientProvider client={queryClient}>
       {/* Everything talks to the local API, so render only in the client (the shell is prerendered). */}
       <ClientOnly fallback={<div className="splash" />}>
-        <AuthGate />
+        <HotkeysProvider
+          appHotkeys={appHotkeys}
+          scope="app"
+          defaultOptions={{ hotkey: { preventDefault: true, stopPropagation: false } }}
+        >
+          <AuthGate />
+        </HotkeysProvider>
       </ClientOnly>
     </QueryClientProvider>
   );
@@ -176,10 +185,9 @@ function Layout() {
 
 function AppContent() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuOpenRef = useRef(menuOpen);
-  menuOpenRef.current = menuOpen;
   const [initialQuery, setInitialQuery] = useState<string | undefined>();
   const [pairBrowserOpen, setPairBrowserOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { toggleSidebar } = useSidebar();
   useEffect(() => {
     const onCommand = (event: Event) => {
@@ -189,26 +197,20 @@ function AppContent() {
     window.addEventListener("mailfast:command", onCommand);
     return () => window.removeEventListener("mailfast:command", onCommand);
   }, []);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target;
-      const typing =
-        target instanceof HTMLElement && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName));
-      if (
-        ((event.ctrlKey || event.metaKey) && ["f", "k"].includes(event.key.toLowerCase())) ||
-        (event.key === "/" && !typing)
-      ) {
-        event.preventDefault();
-        if (!menuOpenRef.current) setInitialQuery(undefined);
-        setMenuOpen(true);
-        const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
-        input?.focus();
-        input?.select();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  const openSearch = () => {
+    if (!menuOpen) setInitialQuery(undefined);
+    setMenuOpen(true);
+    const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
+    input?.focus();
+    input?.select();
+  };
+  useHotkeys(
+    [appHotkeys.search, appHotkeys.find, appHotkeys.searchSlash].map((hotkey) => ({
+      hotkey,
+      callback: openSearch,
+    })),
+  );
+  useHotkey(appHotkeys.shortcuts, () => setShortcutsOpen(true));
   return (
     <>
       <AppContextMenu>
@@ -218,6 +220,7 @@ function AppContent() {
             setMenuOpen(true);
           }}
           onPairBrowser={() => setPairBrowserOpen(true)}
+          onKeyboardShortcuts={() => setShortcutsOpen(true)}
         />
         <div className="workspace">
           <div className="mobile-tools">
@@ -238,7 +241,9 @@ function AppContent() {
           onClose={() => setMenuOpen(false)}
           onToggleSidebar={toggleSidebar}
           onPairBrowser={() => setPairBrowserOpen(true)}
+          onKeyboardShortcuts={() => setShortcutsOpen(true)}
         />
+        <KeyboardShortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <PairBrowserDialog open={pairBrowserOpen} onOpenChange={setPairBrowserOpen} />
       </AppContextMenu>
     </>
@@ -255,7 +260,15 @@ function AccountAvatar({ account }: { account: MailAccount | undefined }) {
   );
 }
 
-function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrowser: () => void }) {
+function Sidebar({
+  onSearch,
+  onPairBrowser,
+  onKeyboardShortcuts,
+}: {
+  onSearch: () => void;
+  onPairBrowser: () => void;
+  onKeyboardShortcuts: () => void;
+}) {
   const auth = useQuery(authQuery).data;
   const accounts = auth?.accounts ?? [];
   const active = accounts.find((a) => a.id === auth?.activeAccountId);
@@ -268,21 +281,13 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
       setAccountError(error instanceof Error ? error.message : "Account action failed"),
     );
   };
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (target instanceof HTMLElement && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName)))
-        return;
-      if (!event.ctrlKey || event.altKey || event.metaKey || !/^[1-9]$/.test(event.key)) return;
-      const next = accounts[Number(event.key) - 1];
-      if (next) {
-        event.preventDefault();
-        perform(switchAccount(next.id));
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [accounts]);
+  useHotkeys(
+    accounts.slice(0, 9).map((account, index) => ({
+      hotkey: accountHotkeys[index],
+      callback: () => perform(switchAccount(account.id)),
+    })),
+    { ignoreInputs: true },
+  );
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
   const { state } = useSidebar();
   const system = SIDEBAR_ORDER.map((id) => labels.find((l) => l.id === id) ?? { id, name: labelName(id), unread: 0 });
@@ -326,7 +331,7 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
                     </span>
                   )}
                   {item.id === active?.id && <Check className="size-4" aria-label="Active account" />}
-                  {index < 9 && <DropdownMenuShortcut>Ctrl+{index + 1}</DropdownMenuShortcut>}
+                  {index < 9 && <DropdownMenuShortcut>{shortcutLabel(accountHotkeys[index].id)}</DropdownMenuShortcut>}
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
@@ -350,6 +355,11 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
               >
                 <Icon name="ALL" />
                 Sync now
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onKeyboardShortcuts}>
+                <Icon name="command" />
+                Keyboard shortcuts
+                <DropdownMenuShortcut>{shortcutLabel("shortcuts")}</DropdownMenuShortcut>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onPairBrowser}>
                 <Icon name="external" />
@@ -397,11 +407,11 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
               aria-label="Search mail"
               className="rounded-lg border bg-background text-muted-foreground group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:hover:bg-sidebar-accent group-data-[collapsible=icon]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:active:bg-sidebar-accent group-data-[collapsible=icon]:active:text-sidebar-accent-foreground"
               onClick={onSearch}
-              tooltip="Search mail (Ctrl K)"
+              tooltip={`Search mail (${shortcutLabel("search")})`}
             >
               <Icon name="search" />
               <span>Search mail</span>
-              <kbd className="ml-auto group-data-[collapsible=icon]:hidden">Ctrl K</kbd>
+              <kbd className="ml-auto group-data-[collapsible=icon]:hidden">{shortcutLabel("search")}</kbd>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

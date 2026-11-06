@@ -1,3 +1,4 @@
+import { HotkeyOverlay } from "@/components/hotkey-overlay";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
@@ -64,7 +65,11 @@ function ContextMenuSubContent({ className, ...props }: React.ComponentProps<typ
   );
 }
 
-function ContextMenuContent({ className, ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+function ContextMenuContent({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
@@ -74,7 +79,9 @@ function ContextMenuContent({ className, ...props }: React.ComponentProps<typeof
           className,
         )}
         {...props}
-      />
+      >
+        <HotkeyOverlay>{children}</HotkeyOverlay>
+      </ContextMenuPrimitive.Content>
     </ContextMenuPrimitive.Portal>
   );
 }

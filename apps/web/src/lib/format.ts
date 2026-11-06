@@ -67,7 +67,7 @@ export function dateParam(date: Date): string {
   return `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function validateDateRange(search: Record<string, unknown>): DateRange {
+export function validateDateRange(search: Record<string, unknown>, oldest?: number | null): DateRange {
   const valid = (value: unknown) =>
     typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && dateParam(localDate(value)) === value
       ? value
@@ -77,7 +77,15 @@ export function validateDateRange(search: Record<string, unknown>): DateRange {
   const parsedTo = valid(search.to);
   const from = parsedFrom && parsedFrom <= today ? parsedFrom : undefined;
   const to = parsedTo && parsedTo > today ? today : parsedTo;
-  return from && to && from > to ? { from: to, to: from } : { from, to };
+  return clampDateRange(from && to && from > to ? { from: to, to: from } : { from, to }, oldest);
+}
+
+/** Restrict an inclusive local range to the account's cached mail. */
+export function clampDateRange(range: DateRange, oldest?: number | null): DateRange {
+  if (oldest == null) return range;
+  const first = dateParam(new Date(oldest));
+  if (range.to && range.to < first) return {};
+  return { ...range, from: range.from && range.from < first ? first : range.from };
 }
 
 /** Inclusive URL calendar days become [local midnight, next local midnight). */

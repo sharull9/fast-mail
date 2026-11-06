@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, safeStorage, session, shell } from "electron";
 import { env as desktopEnv } from "@mailfast/env/desktop";
 import { AUTH_HEADER } from "@mailfast/shared";
 
@@ -173,6 +173,13 @@ function createWindow(url: string) {
 }
 
 async function boot() {
+  // Leave app shortcuts (Mod+K/F/1-9, ?) to the renderer. On macOS a menu must exist: Electron wires
+  // Cmd+C/V/X/A/Z, Cmd+Q and Cmd+W through menu roles, so keep a minimal one with no app accelerators.
+  Menu.setApplicationMenu(
+    process.platform === "darwin"
+      ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }])
+      : null,
+  );
   const port = await startServer();
   apiOrigin = `http://127.0.0.1:${port}`;
   installAuthHeader();

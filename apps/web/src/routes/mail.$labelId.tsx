@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { Outlet, createFileRoute, retainSearchParams, useNavigate, useParams } from "@tanstack/react-router";
 
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 
 import {
   connectionQuery,
+  statusQuery,
   loadMore,
   queryClient,
   threadsCollection,
@@ -48,7 +49,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/mail/$labelId")({
-  validateSearch: validateDateRange,
+  validateSearch: (search) => validateDateRange(search),
 
   search: { middlewares: [retainSearchParams(["from", "to"])] },
 
@@ -59,7 +60,13 @@ export const Route = createFileRoute("/mail/$labelId")({
   loader: async ({ params, deps }) => {
     const connection = await queryClient.ensureQueryData(connectionQuery).catch(() => undefined);
 
-    if (connection?.paired) await threadsCollection(params.labelId, threadDateRange(deps)).preload();
+    if (connection?.paired) {
+      const status = await queryClient.ensureQueryData(statusQuery).catch(() => undefined);
+      await threadsCollection(
+        params.labelId,
+        threadDateRange(validateDateRange(deps, status?.oldestMessageDate)),
+      ).preload();
+    }
   },
 
   component: Mailbox,
@@ -68,7 +75,12 @@ export const Route = createFileRoute("/mail/$labelId")({
 function Mailbox() {
   const { labelId } = Route.useParams();
 
-  const range = Route.useSearch();
+  const search = Route.useSearch();
+  const { data: status } = useQuery(statusQuery);
+  const range = useMemo(
+    () => validateDateRange(search, status?.oldestMessageDate),
+    [search, status?.oldestMessageDate],
+  );
 
   const hasRange = !!(range.from || range.to);
 
@@ -79,6 +91,15 @@ function Mailbox() {
   const navigate = useNavigate();
 
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (search.from === range.from && search.to === range.to) return;
+    void navigate({
+      from: Route.fullPath,
+      search: (previous) => ({ ...previous, from: range.from, to: range.to }),
+      replace: true,
+    });
+  }, [navigate, search.from, search.to, range.from, range.to]);
 
   const bounds = useMemo(() => threadDateRange(range), [range.from, range.to]);
 

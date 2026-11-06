@@ -1,3 +1,4 @@
+import { HotkeyOverlay } from "@/components/hotkey-overlay";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Popover as PopoverPrimitive } from "radix-ui";
@@ -14,6 +15,7 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  children,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
@@ -27,7 +29,9 @@ function PopoverContent({
           className,
         )}
         {...props}
-      />
+      >
+        <HotkeyOverlay>{children}</HotkeyOverlay>
+      </PopoverPrimitive.Content>
     </PopoverPrimitive.Portal>
   );
 }

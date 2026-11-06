@@ -1,3 +1,5 @@
+import { useHotkeys } from "@tanstack/react-hotkeys";
+import { appHotkeys, shortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
@@ -202,99 +204,114 @@ export function ThreadList({
       openExternal(`https://mail.google.com/mail/?authuser=${encodeURIComponent(state.current.account)}#all/${id}`),
     [],
   );
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target;
-      if (
-        !(el instanceof HTMLElement) ||
-        el.closest('[role="dialog"], [role="menu"]') ||
-        el.isContentEditable ||
-        /INPUT|TEXTAREA|SELECT/.test(el.tagName) ||
-        e.altKey
-      )
-        return;
-      if (el.closest(".group-header") && (e.key === "Enter" || e.key === " ")) return;
-      if (el.closest('[role="checkbox"]') && (e.key === "Enter" || e.key === " ")) return;
-      if (el.closest(".row-important, .row-star") && (e.key === "Enter" || e.key === " ")) return;
-      if (el.closest("button, [role=tab], [role=radio]") && (e.key === "Enter" || e.key === " ")) return;
-      const { threads, selectedId, onOpen, onClose, selection } = state.current;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
-        e.preventDefault();
-        selection.selectAll();
-        return;
-      }
-      if (e.metaKey || e.ctrlKey) return;
-      const focused = el.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId;
-      const index = threads.findIndex((t) => t.id === (focused ?? cursor.current ?? selectedId));
-      const sel = threads[index];
-      const selected = selection.selectedIds.length ? selection.selectedIds : sel ? [sel.id] : [];
-      const move = (to: number) => {
-        if (to >= threads.length) onEndReached?.();
-        const t = threads[Math.max(0, Math.min(threads.length - 1, to))];
-        if (!t) return;
-        const flatIndex = flat.findIndex((item) => item.kind === "thread" && item.thread.id === t.id);
-        if (flatIndex < 0) {
-          pendingScroll.current = t.id;
-          setGroupCollapsed(dateGroup(t.lastDate).key, false);
-        } else virtualizer.scrollToIndex(flatIndex, { align: "auto" });
-        cursor.current = t.id;
-        onOpen(t.id);
-        if (focused) el.blur();
-        for (const neighbour of threads.slice(Math.max(0, to - 1), to + 3)) prefetchThread(neighbour.id);
-      };
-      const run = (action: ThreadAction, advance = false) => {
-        act(selected, action);
-        if (selection.selectedIds.length) selection.clear();
-        else if (advance && sel) {
-          const next = threads[index + 1] ?? threads[index - 1];
-          if (next) onOpen(next.id);
-          else onClose();
-        }
-      };
-      switch (e.key) {
-        case "j":
-        case "ArrowDown":
-          move(index + 1);
-          break;
-        case "k":
-        case "ArrowUp":
-          move(index < 0 ? 0 : index - 1);
-          break;
-        case "Enter":
-          if (sel) onOpen(sel.id);
-          else if (threads[0]) onOpen(threads[0].id);
-          break;
-        case "Escape":
-          if (selection.selectedIds.length) selection.clear();
-          else onClose();
-          break;
-        case "x":
-          if (sel) selection.toggle(sel.id);
-          break;
-        case "e":
-          run({ kind: labelId === "ALL" || labelId === "ARCHIVE" ? "inbox" : "archive" }, true);
-          break;
-        case "#":
-        case "Delete":
-          run({ kind: labelId === "TRASH" ? "untrash" : "trash" }, true);
-          break;
-        case "s":
-          run({ kind: (sel ?? threads.find((t) => t.id === selected[0]))?.starred ? "unstar" : "star" });
-          break;
-        case "I":
-          run({ kind: "read" });
-          break;
-        case "U":
-          run({ kind: "unread" });
-          break;
-        default:
+  const listHotkeys = [
+    appHotkeys.next,
+    appHotkeys.nextArrow,
+    appHotkeys.previous,
+    appHotkeys.previousArrow,
+    appHotkeys.open,
+    appHotkeys.close,
+    appHotkeys.select,
+    appHotkeys.selectAll,
+    appHotkeys.archive,
+    appHotkeys.trash,
+    appHotkeys.trashDelete,
+    appHotkeys.star,
+    appHotkeys.read,
+    appHotkeys.unread,
+  ];
+  useHotkeys(
+    listHotkeys.map((hotkey) => ({
+      hotkey,
+      callback: (e) => {
+        const id = hotkey.id;
+        const el = e.target;
+        if (!(el instanceof HTMLElement)) return;
+        // Keep native activation on row controls and collapsible group headers.
+        if (
+          id === "open" &&
+          el.closest(
+            'button, [role="checkbox"], [role="tab"], [role="radio"], .group-header, .row-important, .row-star',
+          )
+        )
           return;
-      }
-      e.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [virtualizer, flat, labelId, onEndReached, setGroupCollapsed]);
+        const { threads, selectedId, onOpen, onClose, selection } = state.current;
+        if (id === "selectAll") {
+          e.preventDefault();
+          selection.selectAll();
+          return;
+        }
+        const focused = el.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId;
+        const index = threads.findIndex((t) => t.id === (focused ?? cursor.current ?? selectedId));
+        const sel = threads[index];
+        const selected = selection.selectedIds.length ? selection.selectedIds : sel ? [sel.id] : [];
+        const move = (to: number) => {
+          if (to >= threads.length) onEndReached?.();
+          const t = threads[Math.max(0, Math.min(threads.length - 1, to))];
+          if (!t) return;
+          const flatIndex = flat.findIndex((item) => item.kind === "thread" && item.thread.id === t.id);
+          if (flatIndex < 0) {
+            pendingScroll.current = t.id;
+            setGroupCollapsed(dateGroup(t.lastDate).key, false);
+          } else virtualizer.scrollToIndex(flatIndex, { align: "auto" });
+          cursor.current = t.id;
+          onOpen(t.id);
+          if (focused) el.blur();
+          for (const neighbour of threads.slice(Math.max(0, to - 1), to + 3)) prefetchThread(neighbour.id);
+        };
+        const run = (action: ThreadAction, advance = false) => {
+          act(selected, action);
+          if (selection.selectedIds.length) selection.clear();
+          else if (advance && sel) {
+            const next = threads[index + 1] ?? threads[index - 1];
+            if (next) onOpen(next.id);
+            else onClose();
+          }
+        };
+        switch (id) {
+          case "next":
+          case "nextArrow":
+            move(index + 1);
+            break;
+          case "previous":
+          case "previousArrow":
+            move(index < 0 ? 0 : index - 1);
+            break;
+          case "open":
+            if (sel) onOpen(sel.id);
+            else if (threads[0]) onOpen(threads[0].id);
+            break;
+          case "close":
+            if (selection.selectedIds.length) selection.clear();
+            else onClose();
+            break;
+          case "select":
+            if (sel) selection.toggle(sel.id);
+            break;
+          case "archive":
+            run({ kind: labelId === "ALL" || labelId === "ARCHIVE" ? "inbox" : "archive" }, true);
+            break;
+          case "trash":
+          case "trashDelete":
+            run({ kind: labelId === "TRASH" ? "untrash" : "trash" }, true);
+            break;
+          case "star":
+            run({ kind: (sel ?? threads.find((t) => t.id === selected[0]))?.starred ? "unstar" : "star" });
+            break;
+          case "read":
+            run({ kind: "read" });
+            break;
+          case "unread":
+            run({ kind: "unread" });
+            break;
+          default:
+            return;
+        }
+        e.preventDefault();
+      },
+    })),
+    { ignoreInputs: true, ignoreDefaultPrevented: true, preventDefault: false },
+  );
   const count = selection.selectedIds.length;
   const bulk = (action: ThreadAction) => {
     act(selection.selectedIds, action);
@@ -463,21 +480,21 @@ const Row = memo(function Row({
   const [contextCount, setContextCount] = useState(1);
   const inInbox = t.labelIds.includes("INBOX");
   const inTrash = t.labelIds.includes("TRASH");
-  const actions: { name: string; icon: string; kind: ThreadAction["kind"]; shortcut?: string }[] = [
+  const actions: { name: string; icon: string; kind: ThreadAction["kind"]; shortcut?: ShortcutId }[] = [
     {
       name: inInbox ? "Archive" : "Move to Inbox",
       icon: "archive",
       kind: inInbox ? "archive" : "inbox",
-      shortcut: "e",
+      shortcut: "archive",
     },
-    { name: inTrash ? "Restore" : "Delete", icon: "TRASH", kind: inTrash ? "untrash" : "trash", shortcut: "#" },
+    { name: inTrash ? "Restore" : "Delete", icon: "TRASH", kind: inTrash ? "untrash" : "trash", shortcut: "trash" },
     {
       name: t.unread ? "Mark read" : "Mark unread",
       icon: t.unread ? "read" : "unread",
       kind: t.unread ? "read" : "unread",
-      shortcut: t.unread ? "Shift+I" : "Shift+U",
+      shortcut: t.unread ? "read" : "unread",
     },
-    { name: t.starred ? "Unstar" : "Star", icon: "STARRED", kind: t.starred ? "unstar" : "star", shortcut: "s" },
+    { name: t.starred ? "Unstar" : "Star", icon: "STARRED", kind: t.starred ? "unstar" : "star", shortcut: "star" },
     {
       name: t.important ? "Mark unimportant" : "Mark important",
       icon: "IMPORTANT",
@@ -539,7 +556,7 @@ const Row = memo(function Row({
             {/* Level 1: who + when, with signals as compact tags. */}
             <div className="row-head">
               <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
-              <span className="row-meta">
+              <span className="row-meta group-hover:-translate-y-2 transition-all">
                 {t.important && showImportant && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -617,14 +634,14 @@ const Row = memo(function Row({
           >
             <Icon name={a.icon} />
             {a.name}
-            {a.shortcut && <ContextMenuShortcut>{a.shortcut}</ContextMenuShortcut>}
+            {a.shortcut && <ContextMenuShortcut>{shortcutLabel(a.shortcut)}</ContextMenuShortcut>}
           </ContextMenuItem>
         ))}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => onToggle(t.id)}>
           <Icon name="command" />
           {checked ? "Deselect" : "Select"}
-          <ContextMenuShortcut>x</ContextMenuShortcut>
+          <ContextMenuShortcut>{shortcutLabel("select")}</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem onSelect={onSelectAll}>
           <Icon name="ALL" />
