@@ -108,3 +108,42 @@ test("Sync now calls the sync endpoint", async ({ page }) => {
   await page.getByRole("button", { name: "Sync now", exact: true }).click();
   await expect.poll(() => syncRequests).toEqual(["POST"]);
 });
+
+test("collapsed search matches the navigation icons and opens the command menu", async ({ page }) => {
+  await mockMail(page);
+  await page.goto("/mail/INBOX");
+  const search = page.getByRole("button", { name: "Search mail", exact: true });
+  await expect(search).toHaveCSS("border-top-width", "1px");
+  await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  await expect(page.locator(container)).toHaveCSS("width", "48px");
+  await expect(search).toHaveCSS("width", "32px");
+  await expect(search).toHaveCSS("height", "32px");
+  await expect(search).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const inboxIcon = page.getByRole("link", { name: "Inbox", exact: true }).locator("svg");
+  const inboxBounds = await inboxIcon.boundingBox();
+  if (!inboxBounds) throw new Error("Inbox icon is not visible");
+  const inboxCenter = inboxBounds.x + inboxBounds.width / 2;
+  for (const control of [
+    search,
+    page.getByRole("button", { name: "Account menu", exact: true }),
+    page.getByRole("button", { name: "Expand sidebar", exact: true }),
+  ]) {
+    const bounds = await control.boundingBox();
+    if (!bounds) throw new Error("Sidebar control is not visible");
+    expect(Math.abs(bounds.x + bounds.width / 2 - inboxCenter)).toBeLessThanOrEqual(1);
+  }
+  expect(
+    await search.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return ["Top", "Right", "Bottom", "Left"].every((side) => {
+        const width = style.getPropertyValue(`border-${side.toLowerCase()}-width`);
+        const color = style.getPropertyValue(`border-${side.toLowerCase()}-color`);
+        return parseFloat(width) === 0 || color === "transparent" || color === "rgba(0, 0, 0, 0)";
+      });
+    }),
+  ).toBe(true);
+  await search.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Search mail (Ctrl K)");
+  await search.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+});

@@ -374,10 +374,10 @@ test("command actions target the open thread; dialog traps focus on mobile", asy
   await page.screenshot({ path: "test-results/mail-mobile-search.png" });
 });
 
-test("checkbox and shift click select a range and bulk actions target it", async ({ page }) => {
+test("avatar checkbox and shift click select a range and bulk actions target it", async ({ page }) => {
   const { actions } = await mockMail(page);
   await page.goto("/mail/INBOX");
-  await page.getByRole("checkbox", { name: "Select Invoice for November", exact: true }).click({ force: true });
+  await page.getByRole("checkbox", { name: "Select Invoice for November", exact: true }).click();
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
   await page.getByRole("checkbox", { name: "Select Package shipped", exact: true }).click({ modifiers: ["Shift"] });
   await expect(page.getByText("3 selected", { exact: true })).toBeVisible();
@@ -438,7 +438,7 @@ test("selection shortcuts clear selection before closing the pane and reset on n
 test("right clicking outside a selection targets only that conversation", async ({ page }) => {
   const { actions } = await mockMail(page);
   await page.goto("/mail/INBOX");
-  await page.getByRole("checkbox", { name: "Select Invoice for November", exact: true }).click({ force: true });
+  await page.getByRole("checkbox", { name: "Select Invoice for November", exact: true }).click();
   await page.locator('[data-thread-id="social"]').click({ button: "right" });
   await page.getByRole("menuitem", { name: /Archive/ }).click();
   await expect.poll(() => actions).toContainEqual({ threadIds: ["social"], action: { kind: "archive" } });

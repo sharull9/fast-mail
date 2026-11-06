@@ -68,6 +68,24 @@ async function mockMail(page: Page) {
   });
 }
 
+async function expectCenteredTabs(page: Page) {
+  const tabs = page.getByRole("tablist", { name: "Inbox categories" });
+  const toolbar = page.locator(".list-head");
+  await expect(tabs).toBeVisible();
+  const metrics = await tabs.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }));
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight);
+  const tabBounds = await tabs.boundingBox();
+  const toolbarBounds = await toolbar.boundingBox();
+  if (!tabBounds || !toolbarBounds) throw new Error("Missing toolbar or tab bounds");
+  expect(tabBounds.height).toBe(32);
+  expect(Math.abs(tabBounds.y + tabBounds.height / 2 - toolbarBounds.y - toolbarBounds.height / 2)).toBeLessThanOrEqual(
+    1,
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await mockMail(page);
 });
@@ -81,6 +99,7 @@ test("one compact toolbar contains categories and counts, with an empty preview"
   await expect(toolbar.getByRole("tablist", { name: "Inbox categories" })).toBeVisible();
   await expect(toolbar.getByText("1,200 conversations · 10 unread", { exact: true })).toBeVisible();
   expect(await toolbar.evaluate((element) => element.getBoundingClientRect().height)).toBe(44);
+  await expectCenteredTabs(page);
   await expect(page.getByText("No conversation selected", { exact: true })).toBeVisible();
   await expect(page.getByText("Pick one from the list, or press j / k")).toBeVisible();
 });
@@ -97,6 +116,7 @@ test("list starts at forty percent and both panels stop at thirty percent", asyn
     list.evaluate((element) => element.getBoundingClientRect().width).then((width) => width / bounds.width);
   await expect.poll(fraction).toBeGreaterThan(0.39);
   await expect.poll(fraction).toBeLessThan(0.41);
+  await expectCenteredTabs(page);
   for (const [x, expected] of [
     [bounds.x, 0.3],
     [bounds.x + bounds.width, 0.7],
@@ -109,6 +129,7 @@ test("list starts at forty percent and both panels stop at thirty percent", asyn
     await page.mouse.up();
     await expect.poll(fraction).toBeGreaterThan(expected - 0.01);
     await expect.poll(fraction).toBeLessThan(expected + 0.01);
+    await expectCenteredTabs(page);
   }
   const saved = await fraction();
   await page.reload();

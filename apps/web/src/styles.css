@@ -34,6 +34,7 @@
   --sidebar-border: #27272a;
   --sidebar-ring: #a99ae9;
   --star: #e6c47c;
+  --important: #e8b04b;
   font-family: "Geist Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -207,7 +208,11 @@ kbd {
 .inbox-tabs {
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
+}
+.inbox-tabs::-webkit-scrollbar {
+  display: none;
 }
 .list {
   min-height: 0;
@@ -237,15 +242,41 @@ kbd {
 }
 .row-actions {
   display: none;
-  flex: 0 0 auto;
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  transform: translateY(-50%);
+  background: var(--row-action-background, var(--card));
   gap: 3px;
+}
+.row-actions::before {
+  content: "";
+  position: absolute;
+  inset: 0 100% 0 auto;
+  width: 24px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--row-action-background, var(--card)));
 }
 .row:hover .row-actions,
 .row:focus-within .row-actions {
   display: flex;
 }
-.row:hover .date {
-  display: none;
+.row:hover .date,
+.row:focus-within .date {
+  visibility: hidden;
+}
+.row-selection-check {
+  animation: row-selection-check 120ms ease-out;
+}
+@keyframes row-selection-check {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .pane {
@@ -395,10 +426,11 @@ kbd {
   user-select: none;
 }
 .row:hover,
-.row:focus-visible {
+.row:focus-within {
   background: var(--card);
 }
 .row.selected {
+  --row-action-background: var(--accent);
   background: var(--accent);
 }
 .row:focus-visible {
@@ -409,11 +441,11 @@ kbd {
   flex: 1;
   min-width: 0;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 .from {
-  width: 168px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  max-width: 180px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -449,6 +481,8 @@ kbd {
   gap: 2px;
 }
 .row.narrow .from {
+  flex: 0 0 auto;
+  max-width: none;
   width: auto;
   padding-right: 55px;
 }
@@ -459,12 +493,6 @@ kbd {
 }
 .row.narrow .row-preview {
   font-size: 11px;
-}
-.row.narrow .row-actions {
-  position: absolute;
-  top: 2px;
-  right: 7px;
-  background: inherit;
 }
 @theme inline {
   --font-mono: "Geist Mono Variable", monospace;

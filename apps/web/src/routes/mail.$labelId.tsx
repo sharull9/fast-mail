@@ -10,12 +10,6 @@ import { ThreadList } from "@/components/thread-list";
 
 import { connectionQuery, loadMore, queryClient, threadsCollection, labelsCollection } from "@/lib/data";
 
-import { Icon } from "@/components/icon";
-
-import { IconButton } from "@/components/icon-button";
-
-import { openCommandMenu } from "@/components/app-context-menu";
-
 import { labelName } from "@/lib/format";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -80,7 +74,7 @@ function Mailbox() {
 
             onValueChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
 
-            className="inbox-tabs"
+            className="inbox-tabs h-8 justify-center gap-0"
           >
             <TabsList aria-label="Inbox categories">
               {INBOX_TABS.map((tab) => (
@@ -88,7 +82,7 @@ function Mailbox() {
                   {tab.name}
 
                   {(labels.find((l) => l.id === categoryId(tab.id))?.unread ?? 0) > 0 && (
-                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium text-muted-foreground tabular-nums group-data-[state=active]/tab:bg-primary/20 group-data-[state=active]/tab:text-primary">
+                    <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium text-muted-foreground tabular-nums group-data-[state=active]/tab:bg-primary/20 group-data-[state=active]/tab:text-primary">
                       {labels.find((l) => l.id === categoryId(tab.id))?.unread}
                     </span>
                   )}
@@ -100,22 +94,16 @@ function Mailbox() {
           <span className="min-w-0 truncate text-sm font-semibold">{labelName(labelId, label?.name)}</span>
         )}
 
-        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-2">
-          {/* Next to the category tabs (~300px) the counts only fit in a wider list panel. */}
-          <span
-            className={
-              labelId === "INBOX" || isInboxCategory(labelId)
-                ? "hidden max-w-52 truncate text-xs text-muted-foreground @min-[560px]:block"
-                : "hidden max-w-52 truncate text-xs text-muted-foreground @min-[380px]:block"
-            }
-          >
-            {Math.max(threads.length, label?.total ?? 0).toLocaleString()} conversations · {label?.unread ?? 0} unread
-          </span>
-
-          <IconButton label="Search this mailbox" onClick={() => openCommandMenu()}>
-            <Icon name="search" />
-          </IconButton>
-        </div>
+        {/* Next to the category tabs (~300px) the counts only fit in a wider list panel. */}
+        <span
+          className={
+            labelId === "INBOX" || isInboxCategory(labelId)
+              ? "ml-auto hidden max-w-52 shrink-0 truncate text-xs text-muted-foreground @min-[560px]:block"
+              : "ml-auto hidden max-w-52 shrink-0 truncate text-xs text-muted-foreground @min-[380px]:block"
+          }
+        >
+          {Math.max(threads.length, label?.total ?? 0).toLocaleString()} conversations · {label?.unread ?? 0} unread
+        </span>
       </header>
 
       {isLoading ? (

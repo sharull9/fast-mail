@@ -242,13 +242,13 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <MailSidebar collapsible="icon" aria-label="Mail navigation">
-      <SidebarHeader>
+      <SidebarHeader className="group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:pb-0">
         <div className="flex min-w-0 items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 aria-label="Account menu"
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1.5 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:p-0"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1.5 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
               >
                 <MailAvatar name="" email={account} className="size-8 group-data-[collapsible=icon]:size-7" />
                 <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
@@ -291,14 +291,17 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
             aria-label={state === "collapsed" ? "Expand sidebar" : "Collapse sidebar"}
           />
         </div>
-        {state === "collapsed" && <SidebarTrigger aria-label="Expand sidebar" />}
+        <SidebarTrigger
+          className="hidden group-data-[collapsible=icon]:inline-flex group-data-[collapsible=icon]:size-8"
+          aria-label="Expand sidebar"
+        />
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Search mail"
-              className="rounded-lg border bg-background text-muted-foreground"
+              className="rounded-lg border bg-background text-muted-foreground group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:hover:bg-sidebar-accent group-data-[collapsible=icon]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:active:bg-sidebar-accent group-data-[collapsible=icon]:active:text-sidebar-accent-foreground"
               onClick={onSearch}
-              tooltip="Search mail and commands (Ctrl+K)"
+              tooltip="Search mail (Ctrl K)"
             >
               <Icon name="search" />
               <span>Search mail</span>
@@ -312,7 +315,7 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
           { name: "Mail", labels: system.filter((l) => !["SPAM", "TRASH"].includes(l.id)) },
           { name: "More", labels: system.filter((l) => ["SPAM", "TRASH"].includes(l.id)) },
         ].map((group) => (
-          <SidebarGroup key={group.name}>
+          <SidebarGroup key={group.name} className="group-data-[collapsible=icon]:first:pt-1">
             <SidebarGroupLabel>{group.name}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>

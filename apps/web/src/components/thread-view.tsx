@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Icon } from "@/components/icon";
-import { MoreHorizontal, X } from "lucide-react";
+import { CircleAlert, MoreHorizontal, X } from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -141,6 +141,15 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
       <div className="flex-1 px-6 pb-6">
         <h1 className="thread-subject">{t.subject || "(no subject)"}</h1>
         <div className="chips">
+          {t.important && (
+            <Badge variant="secondary" className="bg-[var(--important)]/10 text-[var(--important)]">
+              <CircleAlert
+                aria-hidden="true"
+                className="size-3.5 fill-[var(--important)]/20 stroke-[var(--important)]"
+              />
+              Important
+            </Badge>
+          )}
           {chips.map((l) => (
             <Badge key={l} variant="secondary">
               {labelName(l, names.get(l))}

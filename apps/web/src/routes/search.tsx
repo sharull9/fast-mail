@@ -7,9 +7,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyPreview } from "@/components/empty-preview";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Icon } from "@/components/icon";
-import { IconButton } from "@/components/icon-button";
-import { openCommandMenu } from "@/components/app-context-menu";
 import { searchQuery } from "@/lib/data";
 
 export const Route = createFileRoute("/search")({
@@ -42,9 +39,6 @@ function Search() {
           <span className="hidden max-w-52 truncate text-xs text-muted-foreground @min-[380px]:block">
             {threads.length.toLocaleString()} conversations · {threads.filter((thread) => thread.unread).length} unread
           </span>
-          <IconButton label="Search mail" onClick={() => openCommandMenu()}>
-            <Icon name="search" />
-          </IconButton>
           <Button
             variant="ghost"
             size="sm"

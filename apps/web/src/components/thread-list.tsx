@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleAlert, MoreHorizontal } from "lucide-react";
 import type { ThreadAction, ThreadRow } from "@mailfast/shared";
 import { authQuery, prefetchThread, runThreadAction } from "@/lib/data";
 import { cleanSnippet, dateGroup, listDate, sendersLabel } from "@/lib/format";
@@ -9,6 +9,7 @@ import { openExternal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useThreadSelection } from "@/hooks/use-thread-selection";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import {
   ContextMenu,
@@ -62,6 +63,7 @@ type ListItem =
 
 export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached, empty, labelId, total }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingScroll = useRef<string | null>(null);
   const [narrow, setNarrow] = useState(false);
   const [groupOverrides, setGroupOverrides] = useState(readGroupOverrides);
   const account = useQuery(authQuery).data?.account ?? "";
@@ -92,9 +94,9 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
   const visibleThreads = useMemo(() => flat.flatMap((item) => (item.kind === "thread" ? [item.thread] : [])), [flat]);
   const ids = useMemo(() => visibleThreads.map((thread) => thread.id), [visibleThreads]);
   const selection = useThreadSelection(ids);
-  const toggleGroup = (key: string, collapsed: boolean) => {
+  const setGroupCollapsed = useCallback((key: string, collapsed: boolean) => {
     setGroupOverrides((previous) => {
-      const next = { ...previous, [key]: !collapsed };
+      const next = { ...previous, [key]: collapsed };
       try {
         localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify(next));
       } catch {
@@ -102,16 +104,22 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
       }
       return next;
     });
-  };
-  useEffect(() => {
-    const element = scrollRef.current;
+  }, []);
+  // Callback ref: the list element mounts after the empty/loading states, so measure its width
+  // synchronously on attach (no 44px-stride first paint) and keep observing it while mounted.
+  const resizeObserver = useRef<ResizeObserver | null>(null);
+  const attachList = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
+    resizeObserver.current?.disconnect();
+    resizeObserver.current = null;
     if (!element) return;
+    setNarrow(element.clientWidth < 560);
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setNarrow(entry.contentRect.width < 560);
     });
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [threads.length === 0]);
+    resizeObserver.current = observer;
+  }, []);
   const virtualizer = useVirtualizer({
     count: flat.length,
     getScrollElement: () => scrollRef.current,
@@ -120,6 +128,13 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
   });
   useEffect(() => {
     virtualizer.measure();
+    if (pendingScroll.current) {
+      const index = flat.findIndex((item) => item.kind === "thread" && item.thread.id === pendingScroll.current);
+      if (index >= 0) {
+        virtualizer.scrollToIndex(index, { align: "auto" });
+        pendingScroll.current = null;
+      }
+    }
   }, [narrow, flat, virtualizer]);
   const items = virtualizer.getVirtualItems();
   const lastIndex = items.at(-1)?.index ?? 0;
@@ -139,8 +154,14 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
     const handle = requestIdleCallback(() => firstIds.split(",").forEach(prefetchThread));
     return () => cancelIdleCallback(handle);
   }, [firstIds]);
-  const state = useRef({ threads: visibleThreads, selectedId, onOpen, onClose, selection, account });
-  state.current = { threads: visibleThreads, selectedId, onOpen, onClose, selection, account };
+  const state = useRef({ threads, selectedId, onOpen, onClose, selection, account });
+  state.current = { threads, selectedId, onOpen, onClose, selection, account };
+  // The thread j/k last moved to. `selectedId` comes from the route and lags a render behind
+  // navigation, so a fast second keypress would otherwise start from a stale position.
+  const cursor = useRef(selectedId);
+  useEffect(() => {
+    cursor.current = selectedId;
+  }, [selectedId]);
   const targetIds = useCallback((id: string) => {
     const { selection } = state.current;
     return selection.selectedIds.includes(id) ? selection.selectedIds : [id];
@@ -180,6 +201,8 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
       )
         return;
       if (el.closest(".group-header") && (e.key === "Enter" || e.key === " ")) return;
+      if (el.closest('[role="checkbox"]') && (e.key === "Enter" || e.key === " ")) return;
+      if (el.closest(".row-important") && (e.key === "Enter" || e.key === " ")) return;
       const { threads, selectedId, onOpen, onClose, selection } = state.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
@@ -188,15 +211,21 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
       }
       if (e.metaKey || e.ctrlKey) return;
       const focused = el.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId;
-      const index = threads.findIndex((t) => t.id === (focused ?? selectedId));
+      const index = threads.findIndex((t) => t.id === (focused ?? cursor.current ?? selectedId));
       const sel = threads[index];
       const selected = selection.selectedIds.length ? selection.selectedIds : sel ? [sel.id] : [];
       const move = (to: number) => {
+        if (to >= threads.length) onEndReached?.();
         const t = threads[Math.max(0, Math.min(threads.length - 1, to))];
         if (!t) return;
-        onOpen(t.id);
         const flatIndex = flat.findIndex((item) => item.kind === "thread" && item.thread.id === t.id);
-        virtualizer.scrollToIndex(flatIndex, { align: "auto" });
+        if (flatIndex < 0) {
+          pendingScroll.current = t.id;
+          setGroupCollapsed(dateGroup(t.lastDate).key, false);
+        } else virtualizer.scrollToIndex(flatIndex, { align: "auto" });
+        cursor.current = t.id;
+        onOpen(t.id);
+        if (focused) el.blur();
         for (const neighbour of threads.slice(Math.max(0, to - 1), to + 3)) prefetchThread(neighbour.id);
       };
       const run = (action: ThreadAction, advance = false) => {
@@ -251,7 +280,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [virtualizer, flat, labelId]);
+  }, [virtualizer, flat, labelId, onEndReached, setGroupCollapsed]);
   const count = selection.selectedIds.length;
   const bulk = (action: ThreadAction) => {
     act(selection.selectedIds, action);
@@ -310,7 +339,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
           </EmptyHeader>
         </Empty>
       ) : (
-        <div ref={scrollRef} className="list">
+        <div ref={attachList} className="list">
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {items.map((v) => {
               const item = flat[v.index];
@@ -321,7 +350,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
                     key={`group:${item.key}`}
                     type="button"
                     aria-expanded={!item.collapsed}
-                    onClick={() => toggleGroup(item.key, item.collapsed)}
+                    onClick={() => setGroupCollapsed(item.key, !item.collapsed)}
                     className="group-header absolute inset-x-0 flex h-8 w-full items-center gap-2 bg-background/95 px-3 text-left text-[11px] font-medium hover:bg-accent"
                     style={{ transform: `translateY(${v.start}px)` }}
                   >
@@ -338,8 +367,8 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
                   top={v.start}
                   opened={t.id === selectedId}
                   checked={selection.selected.has(t.id)}
-                  selecting={count > 0}
                   narrow={narrow}
+                  showImportant={labelId !== "IMPORTANT"}
                   onOpen={onOpen}
                   onClick={click}
                   onToggle={toggle}
@@ -362,8 +391,8 @@ const Row = memo(function Row({
   top,
   opened,
   checked,
-  selecting,
   narrow,
+  showImportant,
   onOpen,
   onClick,
   onToggle,
@@ -376,8 +405,8 @@ const Row = memo(function Row({
   top: number;
   opened: boolean;
   checked: boolean;
-  selecting: boolean;
   narrow: boolean;
+  showImportant: boolean;
   onOpen: (id: string) => void;
   onClick: (id: string, event: MouseEvent) => void;
   onToggle: (id: string, range?: boolean) => void;
@@ -420,6 +449,7 @@ const Row = memo(function Row({
         <div
           data-thread-id={t.id}
           role="row"
+          aria-label={`${sendersLabel(t.senders, t.messageCount)}, ${t.subject || "(no subject)"}${t.important ? ", important" : ""}`}
           aria-selected={checked}
           tabIndex={0}
           className={cn("row group", (opened || checked) && "selected", t.unread && "unread", narrow && "narrow")}
@@ -427,39 +457,53 @@ const Row = memo(function Row({
           onMouseEnter={() => prefetchThread(t.id)}
           onClick={(e) => onClick(t.id, e)}
         >
-          <div
-            className="relative flex size-7 shrink-0 items-center justify-center"
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={checked}
+            aria-label={`Select ${t.subject || "conversation"}`}
+            className={cn(
+              "relative flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              !checked && "group-hover:ring-1 group-hover:ring-border",
+              checked && "bg-primary text-primary-foreground",
+            )}
             data-avatar-slot
             onClick={(e) => {
               e.stopPropagation();
               onToggle(t.id, e.shiftKey);
             }}
           >
-            <MailAvatar
-              name={t.senders[0]?.name ?? ""}
-              email={t.senders[0]?.email ?? ""}
-              className={cn(
-                "pointer-events-none group-hover:invisible group-focus-within:invisible",
-                (checked || selecting) && "invisible",
-              )}
-            />
-            <Checkbox
-              className={cn(
-                "absolute size-[18px] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-                (checked || selecting) && "opacity-100",
-              )}
-              aria-label={`Select ${t.subject || "conversation"}`}
-              checked={checked}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle(t.id, e.shiftKey);
-              }}
-            />
-          </div>
+            {checked ? (
+              <Check aria-hidden="true" className="row-selection-check size-4" strokeWidth={3} />
+            ) : (
+              <MailAvatar name={t.senders[0]?.name ?? ""} email={t.senders[0]?.email ?? ""} />
+            )}
+          </button>
           <div className="row-main">
             <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
             <div className="row-preview">
               {t.unread && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
+              {t.important && showImportant && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Marked important — click to unmark"
+                      className="row-important flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        act([t.id], { kind: "unimportant" });
+                      }}
+                    >
+                      <CircleAlert
+                        aria-hidden="true"
+                        className="size-3.5 fill-[var(--important)]/20 stroke-[var(--important)]"
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Important</TooltipContent>
+                </Tooltip>
+              )}
               <span className="subject">
                 {t.subject || "(no subject)"}
                 <span className="snippet"> · {cleanSnippet(t.snippet)}</span>
