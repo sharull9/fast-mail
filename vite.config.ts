@@ -18,6 +18,18 @@ export default defineConfig({
     ignorePatterns: generated,
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    overrides: [
+      {
+        // Apps import their own modules through the `@/` alias (tsconfig paths), never relatively.
+        files: ["apps/**/*.{ts,tsx}"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            { patterns: [{ regex: "^\\.{1,2}/", message: "Use the @/ alias instead of a relative import." }] },
+          ],
+        },
+      },
+    ],
     options: { typeAware: true, typeCheck: true },
   },
   run: {

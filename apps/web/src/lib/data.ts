@@ -3,13 +3,15 @@ import { createCollection, createOptimisticAction } from "@tanstack/react-db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import {
   actionDelta,
+  belongsInMailbox,
+  INBOX_TABS,
   applyDelta,
   type Label,
   type ThreadAction,
   type ThreadDetail,
   type ThreadRow,
 } from "@mailfast/shared";
-import { api } from "./api";
+import { ApiError, api } from "@/lib/api";
 
 /**
  * Data layer.
@@ -27,10 +29,24 @@ export const queryClient = new QueryClient({
       // No GC timers during build-time prerender (they would keep the build process alive).
       gcTime: typeof window === "undefined" ? Infinity : 5 * 60_000,
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: (failureCount, error) => !(error instanceof ApiError && error.status === 401) && failureCount < 1,
     },
   },
 });
+
+export const connectionQuery = queryOptions({
+  queryKey: ["connection"],
+  queryFn: () => api.connection(),
+  staleTime: Infinity,
+  retry: false,
+});
+
+if (typeof window !== "undefined") {
+  window.addEventListener("mailfast:session-invalid", () => {
+    queryClient.removeQueries({ queryKey: ["auth"] });
+    void queryClient.invalidateQueries({ queryKey: ["connection"] });
+  });
+}
 
 // ------------------------------------------------------------------ labels
 
@@ -101,8 +117,7 @@ export async function loadMore(labelId: string) {
 
 /** Whether a thread with these labels belongs in a mailbox view. */
 function belongs(labelId: string, labelIds: string[]): boolean {
-  if (labelId === "ALL") return !labelIds.includes("SPAM") && !labelIds.includes("TRASH");
-  return labelIds.includes(labelId);
+  return belongsInMailbox(labelId, labelIds);
 }
 
 // ------------------------------------------------------------------ queries
@@ -245,6 +260,10 @@ export function connectEvents() {
         if (ev.status.phase === "signed-out") void queryClient.invalidateQueries({ queryKey: ["auth"] });
         break;
       case "threads-changed":
+        for (const tab of INBOX_TABS) {
+          if (tab.id !== "INBOX" && threadCollections.has(tab.id))
+            void queryClient.invalidateQueries({ queryKey: ["threads", tab.id], exact: true });
+        }
         for (const l of ev.labelIds) {
           if (threadCollections.has(l)) void queryClient.invalidateQueries({ queryKey: ["threads", l], exact: true });
         }

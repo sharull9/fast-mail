@@ -1,0 +1,44 @@
+import {
+  ArchiveIcon,
+  CircleAlertIcon,
+  CommandIcon,
+  FileTextIcon,
+  FilesIcon,
+  InboxIcon,
+  MailIcon,
+  MailOpenIcon,
+  PanelLeftIcon,
+  SearchIcon,
+  SendIcon,
+  StarIcon,
+  TagIcon,
+  Trash2Icon,
+  XIcon,
+  ArrowLeftIcon,
+  ExternalLinkIcon,
+  type LucideIcon,
+} from "lucide-react";
+const icons: Record<string, LucideIcon> = {
+  INBOX: InboxIcon,
+  STARRED: StarIcon,
+  IMPORTANT: CircleAlertIcon,
+  SENT: SendIcon,
+  DRAFT: FileTextIcon,
+  ALL: FilesIcon,
+  SPAM: CircleAlertIcon,
+  TRASH: Trash2Icon,
+  search: SearchIcon,
+  panel: PanelLeftIcon,
+  close: XIcon,
+  tag: TagIcon,
+  command: CommandIcon,
+  archive: ArchiveIcon,
+  read: MailOpenIcon,
+  unread: MailIcon,
+  back: ArrowLeftIcon,
+  external: ExternalLinkIcon,
+};
+export function Icon({ name }: { name: string }) {
+  const Component = icons[name] ?? TagIcon;
+  return <Component className="icon" aria-hidden="true" />;
+}

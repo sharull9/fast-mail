@@ -1,9 +1,16 @@
 import { useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ThreadList } from "../components/ThreadList";
-import { ThreadView } from "../components/ThreadView";
-import { searchQuery } from "../lib/data";
+import { useQuery } from "@tanstack/react-query";
+import { ThreadList } from "@/components/thread-list";
+import { ThreadView } from "@/components/thread-view";
+import { Button } from "@/components/ui/button";
+import { EmptyPreview } from "@/components/empty-preview";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Icon } from "@/components/icon";
+import { IconButton } from "@/components/icon-button";
+import { openCommandMenu } from "@/components/app-context-menu";
+import { searchQuery } from "@/lib/data";
 
 export const Route = createFileRoute("/search")({
   validateSearch: (s: Record<string, unknown>): { q: string; t?: string } => ({
@@ -16,8 +23,9 @@ export const Route = createFileRoute("/search")({
 function Search() {
   const { q, t } = Route.useSearch();
   const navigate = useNavigate();
-  // Local FTS5 over cached metadata; the server also asks Gmail while backfill is still running.
-  const { data } = useQuery({ ...searchQuery(q), placeholderData: keepPreviousData });
+  const isMobile = useIsMobile();
+  // Local FTS5 over cached metadata, including while background sync is running.
+  const { data } = useQuery(searchQuery(q));
   const threads = data?.threads ?? [];
 
   const open = useCallback(
@@ -26,24 +34,49 @@ function Search() {
   );
   const close = useCallback(() => void navigate({ to: "/search", search: { q }, replace: true }), [navigate, q]);
 
-  return (
-    <div className={`mailbox${t ? " with-pane" : ""}`}>
-      <section className="list-col">
-        <header className="list-head">
-          <h2>Search</h2>
-          <span className="muted">
-            {threads.length.toLocaleString()} results for “{q}”
+  const list = (
+    <section className="list-col @container h-full">
+      <header className="list-head">
+        <span className="min-w-0 truncate text-sm font-semibold">Search: {q}</span>
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-2">
+          <span className="hidden max-w-52 truncate text-xs text-muted-foreground @min-[380px]:block">
+            {threads.length.toLocaleString()} conversations · {threads.filter((thread) => thread.unread).length} unread
           </span>
-        </header>
-        <ThreadList
-          threads={threads}
-          selectedId={t}
-          onOpen={open}
-          onClose={close}
-          empty="No matches in cached mail yet."
-        />
-      </section>
-      {t && <ThreadView threadId={t} onClose={close} />}
+          <IconButton label="Search mail" onClick={() => openCommandMenu()}>
+            <Icon name="search" />
+          </IconButton>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void navigate({ to: "/mail/$labelId", params: { labelId: "INBOX" } })}
+          >
+            Clear search
+          </Button>
+        </div>
+      </header>
+      <ThreadList
+        key={q}
+        threads={threads}
+        selectedId={t}
+        onOpen={open}
+        onClose={close}
+        empty="No matches in cached mail yet."
+      />
+    </section>
+  );
+  const preview = t ? <ThreadView threadId={t} onClose={close} /> : <EmptyPreview />;
+  if (isMobile) return <div className="mailbox">{t ? preview : list}</div>;
+  return (
+    <div className="mailbox">
+      <ResizablePanelGroup>
+        <ResizablePanel id="list" defaultSize="40%" minSize="30%">
+          {list}
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel id="preview" defaultSize="60%" minSize="30%">
+          {preview}
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }

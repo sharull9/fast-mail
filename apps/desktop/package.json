@@ -6,8 +6,8 @@
   "main": "dist/main.cjs",
   "scripts": {
     "build": "vp pack",
-    "dev": "vp pack && electron .",
-    "start": "electron .",
+    "dev": "vp pack && bun scripts/electron.ts .",
+    "start": "bun scripts/electron.ts .",
     "dist": "vp run @mailfast/web#build && vp run @mailfast/server#build && vp pack && electron-builder --config electron-builder.yml",
     "check": "tsc --noEmit"
   },
@@ -19,6 +19,7 @@
     "electron": "^45.2.2",
     "electron-builder": "^26.18.0",
     "typescript": "^6.0.2",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   }
 }

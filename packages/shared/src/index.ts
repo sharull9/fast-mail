@@ -3,6 +3,60 @@
 
 export const AUTH_HEADER = "x-mailfast-token";
 
+/** Public identity only: credentials and mailbox details never belong here. */
+export interface ServerDescriptor {
+  product: "mailfast";
+  protocolVersion: 1;
+  instanceId: string;
+  mode: "desktop" | "standalone";
+  origin: string;
+}
+
+export interface ConnectionStatus {
+  server: ServerDescriptor;
+  paired: boolean;
+}
+
+export interface PairingGrant {
+  code: string;
+  expiresAt: number;
+  url: string;
+}
+
+export const INBOX_TABS = [
+  { id: "INBOX", name: "All" },
+  { id: "INBOX_PRIMARY", name: "Primary" },
+  { id: "INBOX_SOCIAL", name: "Social" },
+  { id: "INBOX_UPDATES", name: "Updates" },
+] as const;
+
+export function isInboxCategory(id: string): boolean {
+  return id !== "INBOX" && INBOX_TABS.some((tab) => tab.id === id);
+}
+
+/** Gmail category label that files an inbox thread under the Social or Updates tab. */
+export function inboxCategoryLabel(id: string): string | null {
+  if (id === "INBOX_SOCIAL") return "CATEGORY_SOCIAL";
+  if (id === "INBOX_UPDATES") return "CATEGORY_UPDATES";
+  return null;
+}
+
+/** Category labels that keep an inbox thread out of the Primary tab. */
+export const NON_PRIMARY_CATEGORY_LABELS = [
+  "CATEGORY_SOCIAL",
+  "CATEGORY_UPDATES",
+  "CATEGORY_PROMOTIONS",
+  "CATEGORY_FORUMS",
+] as const;
+
+export function belongsInMailbox(id: string, labels: string[]): boolean {
+  if (id === "ALL") return !labels.includes("SPAM") && !labels.includes("TRASH");
+  if (!isInboxCategory(id)) return labels.includes(id);
+  if (!labels.includes("INBOX")) return false;
+  if (id === "INBOX_PRIMARY") return !NON_PRIMARY_CATEGORY_LABELS.some((l) => labels.includes(l));
+  return labels.includes(inboxCategoryLabel(id)!);
+}
+
 export interface Label {
   id: string;
   name: string;

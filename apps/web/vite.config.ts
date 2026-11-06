@@ -1,6 +1,7 @@
 import { defineConfig } from "vite-plus";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { env } from "@mailfast/env/web";
 
 // The Bun sidecar owns the API. In dev, Electron starts it on a fixed port and
@@ -15,6 +16,7 @@ export default defineConfig({
     proxy: { "/api": { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false } },
   },
   plugins: [
+    tailwindcss(),
     // SPA mode: build a static shell the Bun server serves in production.
     tanstackStart({ spa: { enabled: true } }),
     viteReact(),

@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "noUnusedLocals": true
+    "noUnusedLocals": true,
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src"]
 }

@@ -1,7 +1,7 @@
 import type { MessageInput } from "@mailfast/db";
 import type { Label } from "@mailfast/shared";
-import type { Auth } from "./auth.ts";
-import { Limiter, Priority } from "./limiter.ts";
+import type { Auth } from "@/auth.ts";
+import { Limiter, Priority } from "@/limiter.ts";
 
 /**
  * Thin Gmail REST client tuned for speed:
@@ -195,7 +195,7 @@ export class Gmail {
   }
 
   listMessageIds(
-    opts: { labelId?: string; q?: string; pageToken?: string; maxResults: number; includeSpamTrash?: boolean },
+    opts: { labelId?: string; pageToken?: string; maxResults: number; includeSpamTrash?: boolean },
     priority: Priority,
   ) {
     const p = new URLSearchParams({
@@ -203,7 +203,6 @@ export class Gmail {
       fields: "messages(id,threadId),nextPageToken",
     });
     if (opts.labelId) p.set("labelIds", opts.labelId);
-    if (opts.q) p.set("q", opts.q);
     if (opts.pageToken) p.set("pageToken", opts.pageToken);
     if (opts.includeSpamTrash) p.set("includeSpamTrash", "true");
     return this.request<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>("/messages", {

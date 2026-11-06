@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { decodeEntities, parseAddress, parseBatchResponse, toMessageInput } from "./gmail.ts";
-import { Limiter, Priority } from "./limiter.ts";
+import { decodeEntities, parseAddress, parseBatchResponse, toMessageInput } from "@/gmail.ts";
+import { Limiter, Priority } from "@/limiter.ts";
 
 test("parses batch responses", () => {
   const b = "batch_abc";

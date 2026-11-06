@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
+    "web-dev": "bun src/web-dev.ts",
+    "web-dev:standalone": "bun src/web-dev.ts --standalone",
     "build": "bun build src/index.ts --compile --minify --outfile dist/mailfast-server",
     "test": "bun test",
     "check": "tsc --noEmit"

@@ -9,8 +9,10 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "vp run --parallel -F @mailfast/web -F @mailfast/desktop dev",
-    "dev:web": "vp run @mailfast/web#dev",
+    "dev": "vp run --no-cache --parallel -F @mailfast/web -F @mailfast/desktop dev",
+    "dev:web": "vp run --no-cache @mailfast/server#web-dev",
+    "dev:web:standalone": "vp run --no-cache @mailfast/server#web-dev:standalone",
+    "dev:ui": "vp run --no-cache @mailfast/web#dev",
     "build": "vp run -r build",
     "test": "vp run -r test",
     "check": "vp check && vp run -r check",

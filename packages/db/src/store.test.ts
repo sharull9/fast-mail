@@ -55,4 +55,69 @@ describe("mail store", () => {
     expect(toFtsQuery(' foo "bar ')).toBe('"foo"* "bar"*');
     expect(toFtsQuery("   ")).toBeNull();
   });
+
+  test("sender filters search local sender fields and combine with text", () => {
+    const s = openMailStore({ path: ":memory:" });
+    try {
+      s.upsertMessages(
+        [
+          msg({ id: "m1", threadId: "t1", date: 1, subject: "Invoice", fromName: "Alice Cooper" }),
+          msg({
+            id: "m2",
+            threadId: "t2",
+            date: 2,
+            subject: "Alice invoice",
+            fromName: "Bob",
+            fromEmail: "bob@example.com",
+          }),
+          msg({ id: "m3", threadId: "t3", date: 3, subject: "Lunch", fromName: "Alice Cooper" }),
+          msg({
+            id: "m4",
+            threadId: "t4",
+            date: 4,
+            subject: "Fwd",
+            fromName: "Carol",
+            fromEmail: "carol@x.com",
+            to: "alice@example.com, me@example.com",
+          }),
+        ],
+        null,
+      );
+      expect(s.searchThreads("@user:alice", 10).map((t) => t.id)).toEqual(["t3", "t1"]);
+      expect(s.searchThreads("@user:carol", 10).map((t) => t.id)).toEqual(["t4"]);
+      expect(s.searchThreads("@user:alice invoice", 10).map((t) => t.id)).toEqual(["t1"]);
+      expect(s.searchThreads('@user:"Alice Cooper" invoice', 10).map((t) => t.id)).toEqual(["t1"]);
+      expect(s.searchThreads("@user:bob@example.com", 10).map((t) => t.id)).toEqual(["t2"]);
+      expect(s.searchThreads("@user:nobody", 10)).toEqual([]);
+      expect(s.searchThreads("@user:", 10)).toEqual([]);
+      expect(s.searchThreads("", 10)).toEqual([]);
+    } finally {
+      s.close();
+    }
+  });
+
+  test("inbox categories exclude archived mail and filter before pagination", () => {
+    const s = openMailStore({ path: ":memory:" });
+    try {
+      s.upsertMessages(
+        [
+          msg({ id: "a", threadId: "a", date: 1 }),
+          msg({ id: "b", threadId: "b", date: 2, labelIds: ["INBOX", "CATEGORY_PERSONAL"] }),
+          msg({ id: "c", threadId: "c", date: 3, labelIds: ["INBOX", "CATEGORY_SOCIAL"] }),
+          msg({ id: "d", threadId: "d", date: 4, labelIds: ["CATEGORY_SOCIAL"] }),
+          msg({ id: "e", threadId: "e", date: 5, labelIds: ["INBOX", "CATEGORY_UPDATES"] }),
+          msg({ id: "f", threadId: "f", date: 6, labelIds: ["INBOX", "CATEGORY_PROMOTIONS"] }),
+        ],
+        null,
+      );
+      expect(s.listThreads("INBOX_PRIMARY", 100, 1).map((t) => t.id)).toEqual(["b"]);
+      expect(s.listThreads("INBOX_PRIMARY", 2, 10).map((t) => t.id)).toEqual(["a"]);
+      expect(s.listThreads("INBOX_SOCIAL", 100, 10).map((t) => t.id)).toEqual(["c"]);
+      expect(s.listThreads("INBOX_UPDATES", 100, 10).map((t) => t.id)).toEqual(["e"]);
+      s.modifyThreadLabels("c", [], ["INBOX"], null);
+      expect(s.listThreads("INBOX_SOCIAL", 100, 10)).toEqual([]);
+    } finally {
+      s.close();
+    }
+  });
 });

@@ -4,6 +4,7 @@ import { and, asc, count, desc, eq, inArray, lt, lte, notInArray, sql } from "dr
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type { Label, MessageMeta, Participant, ThreadAction, ThreadRow } from "@mailfast/shared";
+import { inboxCategoryLabel, isInboxCategory, NON_PRIMARY_CATEGORY_LABELS } from "@mailfast/shared";
 import * as schema from "./schema.ts";
 import { account, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
 
@@ -323,10 +324,41 @@ export function openMailStore(opts: OpenOptions) {
     },
     /** Keyset page of a label, newest first. `before` is an exclusive lastDate cursor. */
     listThreads(labelId: string, before: number, limit: number): ThreadRow[] {
+      if (isInboxCategory(labelId)) {
+        const excluded = sql.join(
+          NON_PRIMARY_CATEGORY_LABELS.map((l) => sql`${l}`),
+          sql`, `,
+        );
+        const category =
+          labelId === "INBOX_PRIMARY"
+            ? sql`NOT EXISTS (SELECT 1 FROM thread_labels c WHERE c.thread_id = ${threads.id}
+              AND c.label_id IN (${excluded}))`
+            : sql`EXISTS (SELECT 1 FROM thread_labels c WHERE c.thread_id = ${threads.id}
+              AND c.label_id = ${inboxCategoryLabel(labelId)})`;
+        return db
+          .select({ t: threads })
+          .from(threadLabels)
+          .innerJoin(threads, eq(threads.id, threadLabels.threadId))
+          .where(and(eq(threadLabels.labelId, "INBOX"), lt(threadLabels.lastDate, before), category))
+          .orderBy(desc(threadLabels.lastDate))
+          .limit(limit)
+          .all()
+          .map((r) => toThreadRow(r.t));
+      }
       return p.threadPage.all({ labelId, before, limit }).map((r) => toThreadRow(r.t));
     },
     searchThreads(text: string, limit: number): ThreadRow[] {
-      const fts = toFtsQuery(text);
+      const users: string[] = [];
+      const rest = text.replace(
+        /(?<!\S)@user:(?:"([^"]*)"|(\S*))/gi,
+        (_match, quoted: string | undefined, plain: string | undefined) => {
+          const user = toFtsQuery(quoted ?? plain ?? "");
+          if (user) users.push(`{from_name from_email} : (${user})`);
+          return " ";
+        },
+      );
+      const freeText = toFtsQuery(rest);
+      const fts = [...users, ...(freeText ? [freeText] : [])].join(" AND ");
       if (!fts) return [];
       return db
         .select()

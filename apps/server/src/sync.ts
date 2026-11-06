@@ -1,9 +1,9 @@
 import type { MailStore, MessageInput } from "@mailfast/db";
-import { actionDelta, type SyncPhase, type SyncStatus, type ThreadAction } from "@mailfast/shared";
-import type { Auth } from "./auth.ts";
-import type { Events } from "./events.ts";
-import { GmailError, type Gmail } from "./gmail.ts";
-import { Priority } from "./limiter.ts";
+import { actionDelta, isInboxCategory, type SyncPhase, type SyncStatus, type ThreadAction } from "@mailfast/shared";
+import type { Auth } from "@/auth.ts";
+import type { Events } from "@/events.ts";
+import { GmailError, type Gmail } from "@/gmail.ts";
+import { Priority } from "@/limiter.ts";
 
 const POLL_MS = 15_000;
 const LABEL_COUNTS_MS = 120_000;
@@ -345,6 +345,8 @@ export class SyncEngine {
 
   /** Pull the newest page of a label that backfill hasn't covered yet. */
   ensureLabel(labelId: string): Promise<void> {
+    // Inbox category tabs (Primary/Social/Updates) are virtual: they page the INBOX listing.
+    if (isInboxCategory(labelId)) labelId = "INBOX";
     if (!this.auth.status().signedIn || labelId === "ALL") return Promise.resolve();
     const covered = this.store.kvGet("backfill_done") === "1" && !ON_DEMAND_LABELS.has(labelId);
     if (covered || this.store.kvGet(`label_synced:${labelId}`)) return Promise.resolve();
@@ -358,20 +360,6 @@ export class SyncEngine {
         Priority.Interactive,
       );
       this.store.kvSet(`label_synced:${labelId}`, "1");
-    });
-  }
-
-  /** While backfill is running, ask Gmail too so search covers mail not yet synced. */
-  remoteSearch(q: string): Promise<void> {
-    if (!this.auth.status().signedIn || this.store.kvGet("backfill_done") === "1" || q.trim().length < 2) {
-      return Promise.resolve();
-    }
-    return this.once(`search:${q}`, async () => {
-      const page = await this.gmail.listMessageIds({ q, maxResults: 50 }, Priority.Interactive);
-      await this.fetchMissing(
-        (page.messages ?? []).map((m) => m.id),
-        Priority.Interactive,
-      );
     });
   }
 }

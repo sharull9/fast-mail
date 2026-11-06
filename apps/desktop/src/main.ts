@@ -53,13 +53,16 @@ async function serverCommand(): Promise<{ cmd: string; args: string[]; env: Reco
     MAILFAST_TOKEN: apiToken,
     MAILFAST_DATA_DIR: dataDir,
     MAILFAST_PARENT_PID: String(process.pid),
+    MAILFAST_SERVER_MODE: "desktop",
   };
   const key = await secretKey();
   if (key) env.MAILFAST_SECRET_KEY = key;
 
   if (isDev) {
-    // Fixed port so Vite can proxy /api to it.
+    // Fixed port so Vite can proxy /api to it; the dev UI origin is the only
+    // browser origin allowed to redeem pairing grants.
     env.MAILFAST_PORT = DEV_API_PORT;
+    env.MAILFAST_UI_ORIGINS = new URL(DEV_URL).origin;
     return { cmd: "bun", args: ["run", resolve(__dirname, "../../server/src/index.ts")], env };
   }
   const exe = process.platform === "win32" ? "mailfast-server.exe" : "mailfast-server";
@@ -184,9 +187,11 @@ function fatal(err: unknown) {
 }
 
 /**
- * Opens a URL in the system browser. Allowed: any https URL, and the sidecar's
+ * Opens a URL in the system browser. Allowed: any https URL, the sidecar's
  * own sign-in entry point (http://127.0.0.1:<port>/auth/start), which must run
- * in the real browser because Google blocks OAuth in embedded webviews.
+ * in the real browser because Google blocks OAuth in embedded webviews, and
+ * the one-use browser-pairing URL (/<path> with #pair=<grant>) on our own UI
+ * origin — the dev server in development, the sidecar itself in production.
  */
 function openInBrowser(target: unknown) {
   if (typeof target !== "string") return;
@@ -197,7 +202,10 @@ function openInBrowser(target: unknown) {
     return console.warn(`[open-external] rejected invalid URL`);
   }
   const isSignIn = apiOrigin !== "" && url.origin === apiOrigin && url.pathname === "/auth/start";
-  if (url.protocol !== "https:" && !isSignIn)
+  const pairOrigin = isDev ? new URL(DEV_URL).origin : apiOrigin;
+  const isPairUrl =
+    pairOrigin !== "" && url.origin === pairOrigin && url.pathname === "/" && url.hash.startsWith("#pair=");
+  if (url.protocol !== "https:" && !isSignIn && !isPairUrl)
     return console.warn(`[open-external] rejected ${url.origin}${url.pathname}`);
   shell.openExternal(url.toString()).catch((err: unknown) => console.error("[open-external] failed:", err));
 }
