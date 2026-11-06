@@ -483,7 +483,7 @@ test("expired pairing codes offer regeneration", async ({ page }) => {
 test("previews clean invisible padding and search highlights matching terms", async ({ page }) => {
   await mockMail(page);
   await page.goto("/mail/INBOX");
-  await expect(page.locator('[data-thread-id="primary"] .snippet')).toHaveText("· Your invoice is ready");
+  await expect(page.locator('[data-thread-id="primary"] .snippet')).toHaveText("Your invoice is ready");
   await page.locator('[data-thread-id="primary"]').click();
   await expect(page.locator(".pane section")).toContainText("Your invoice is ready");
   await expect(page.locator(".pane section")).toContainText("To: me@example.com");

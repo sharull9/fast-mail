@@ -414,85 +414,177 @@ kbd {
   }
 }
 
+/* Thread card. Hierarchy: state (unread dot, avatar) -> who + when (head) -> what (subject)
+   -> context (snippet). Weight and color step down at each level; signals are compact tags. */
 .row {
   position: absolute;
-  inset: 0 0 auto;
+  inset: 0 8px auto;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 12px;
-  border-radius: 6px;
+  padding: 0 12px 0 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   cursor: pointer;
   user-select: none;
 }
 .row:hover,
 .row:focus-within {
+  --row-action-background: var(--card);
   background: var(--card);
+  border-color: var(--border);
 }
 .row.selected {
   --row-action-background: var(--accent);
   background: var(--accent);
+  border-color: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+.row.opened::before {
+  content: "";
+  position: absolute;
+  inset: 12px auto 12px -1px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--primary);
 }
 .row:focus-visible {
   outline: 1px solid var(--ring);
+}
+.row-unread-dot {
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  transform: translateY(-50%);
+}
+.row [data-avatar-slot] {
+  align-self: center;
 }
 .row-main {
   display: flex;
   flex: 1;
   min-width: 0;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
 }
-.from {
-  flex: 0 1 auto;
-  max-width: 180px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.row-preview {
+.row-head {
   display: flex;
-  flex: 1;
   min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  line-height: 18px;
 }
-.subject {
+.from {
+  min-width: 0;
   overflow: hidden;
+  color: var(--secondary-foreground);
+  font-size: 13px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.snippet {
-  color: var(--muted-foreground);
-  font-weight: 400;
+.row-meta {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 .date {
-  flex-shrink: 0;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.row.unread .from {
-  font-weight: 650;
+.row-tag {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+  outline: none;
 }
-.row.narrow .row-main {
+.row-tag:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.row-tag-important {
+  background: color-mix(in oklab, var(--important) 14%, transparent);
+  color: var(--important);
+}
+.row-tag-important:hover {
+  background: color-mix(in oklab, var(--important) 24%, transparent);
+}
+.row-star {
+  display: inline-flex;
+  color: var(--star);
+}
+.row-star .icon {
+  width: 13px;
+  height: 13px;
+  fill: var(--star);
+}
+.row-body {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.subject {
+  flex-shrink: 0;
+  max-width: 70%;
+  overflow: hidden;
+  color: var(--secondary-foreground);
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+.snippet {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+}
+.subject + .snippet::before {
+  content: "— ";
+  color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+.row.unread .from,
+.row.unread .subject {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.row.unread .date {
+  color: var(--foreground);
+}
+.row:not(.unread) .subject {
+  font-weight: 400;
+}
+/* Narrow: three lines (head / subject / snippet). */
+.row.narrow .row-body {
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: 1px;
 }
-.row.narrow .from {
-  flex: 0 0 auto;
+.row.narrow .subject {
   max-width: none;
-  width: auto;
-  padding-right: 55px;
+  flex-shrink: 1;
 }
-.row.narrow .date {
-  position: absolute;
-  top: 8px;
-  right: 10px;
+.row.narrow .snippet {
+  font-size: 12px;
 }
-.row.narrow .row-preview {
-  font-size: 11px;
+.row.narrow .subject + .snippet::before {
+  content: none;
 }
 @theme inline {
   --font-mono: "Geist Mono Variable", monospace;

@@ -123,7 +123,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
   const virtualizer = useVirtualizer({
     count: flat.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (flat[index]?.kind === "header" ? 32 : narrow ? 56 : 44),
+    estimateSize: (index) => (flat[index]?.kind === "header" ? 32 : narrow ? ROW_NARROW : ROW_WIDE),
     overscan: 15,
   });
   useEffect(() => {
@@ -202,7 +202,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
         return;
       if (el.closest(".group-header") && (e.key === "Enter" || e.key === " ")) return;
       if (el.closest('[role="checkbox"]') && (e.key === "Enter" || e.key === " ")) return;
-      if (el.closest(".row-important") && (e.key === "Enter" || e.key === " ")) return;
+      if (el.closest(".row-tag, .row-star") && (e.key === "Enter" || e.key === " ")) return;
       const { threads, selectedId, onOpen, onClose, selection } = state.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
@@ -351,12 +351,14 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
                     type="button"
                     aria-expanded={!item.collapsed}
                     onClick={() => setGroupCollapsed(item.key, !item.collapsed)}
-                    className="group-header absolute inset-x-0 flex h-8 w-full items-center gap-2 bg-background/95 px-3 text-left text-[11px] font-medium hover:bg-accent"
+                    className="group-header absolute inset-x-0 flex h-8 w-full items-center gap-1.5 bg-background/95 px-5 text-left text-[11px] font-semibold tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
                     style={{ transform: `translateY(${v.start}px)` }}
                   >
                     {item.collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
                     {item.label}
-                    <span className="text-muted-foreground">{item.count}</span>
+                    <span className="ml-0.5 rounded-full bg-foreground/[0.06] px-1.5 py-px text-[10px] font-medium tracking-normal tabular-nums">
+                      {item.count}
+                    </span>
                   </button>
                 );
               const t = item.thread;
@@ -385,6 +387,11 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
     </>
   );
 }
+
+// Card heights, including the 4px gutter between cards (2px above and below each card).
+const ROW_WIDE = 64;
+const ROW_NARROW = 80;
+const ROW_GUTTER = 2;
 
 const Row = memo(function Row({
   thread: t,
@@ -452,18 +459,29 @@ const Row = memo(function Row({
           aria-label={`${sendersLabel(t.senders, t.messageCount)}, ${t.subject || "(no subject)"}${t.important ? ", important" : ""}`}
           aria-selected={checked}
           tabIndex={0}
-          className={cn("row group", (opened || checked) && "selected", t.unread && "unread", narrow && "narrow")}
-          style={{ transform: `translateY(${top}px)`, height: narrow ? 56 : 44 }}
+          className={cn(
+            "row group",
+            (opened || checked) && "selected",
+            opened && "opened",
+            t.unread && "unread",
+            narrow && "narrow",
+          )}
+          style={{
+            transform: `translateY(${top + ROW_GUTTER}px)`,
+            height: (narrow ? ROW_NARROW : ROW_WIDE) - ROW_GUTTER * 2,
+          }}
           onMouseEnter={() => prefetchThread(t.id)}
           onClick={(e) => onClick(t.id, e)}
         >
+          {/* Level 0: state. Unread lives in the gutter so it never shifts the text. */}
+          {t.unread && <span className="row-unread-dot" aria-hidden="true" />}
           <button
             type="button"
             role="checkbox"
             aria-checked={checked}
             aria-label={`Select ${t.subject || "conversation"}`}
             className={cn(
-              "relative flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "relative flex size-8 shrink-0 cursor-pointer items-center justify-center self-start rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               !checked && "group-hover:ring-1 group-hover:ring-border",
               checked && "bg-primary text-primary-foreground",
             )}
@@ -476,53 +494,55 @@ const Row = memo(function Row({
             {checked ? (
               <Check aria-hidden="true" className="row-selection-check size-4" strokeWidth={3} />
             ) : (
-              <MailAvatar name={t.senders[0]?.name ?? ""} email={t.senders[0]?.email ?? ""} />
+              <MailAvatar className="size-8" name={t.senders[0]?.name ?? ""} email={t.senders[0]?.email ?? ""} />
             )}
           </button>
           <div className="row-main">
-            <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
-            <div className="row-preview">
-              {t.unread && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
+            {/* Level 1: who + when, with signals as compact tags. */}
+            <div className="row-head">
+              <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
               {t.important && showImportant && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
                       aria-label="Marked important — click to unmark"
-                      className="row-important flex size-4 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="row-tag row-tag-important"
                       onClick={(e) => {
                         e.stopPropagation();
                         act([t.id], { kind: "unimportant" });
                       }}
                     >
-                      <CircleAlert
-                        aria-hidden="true"
-                        className="size-3.5 fill-[var(--important)]/20 stroke-[var(--important)]"
-                      />
+                      <CircleAlert aria-hidden="true" className="size-3" strokeWidth={2.25} />
+                      Important
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>Important</TooltipContent>
+                  <TooltipContent>Click to unmark as important</TooltipContent>
                 </Tooltip>
               )}
-              <span className="subject">
-                {t.subject || "(no subject)"}
-                <span className="snippet"> · {cleanSnippet(t.snippet)}</span>
+              <span className="row-meta">
+                {t.starred && (
+                  <button
+                    type="button"
+                    aria-label="Unstar"
+                    className="row-star"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      act([t.id], { kind: "unstar" });
+                    }}
+                  >
+                    <Icon name="STARRED" />
+                  </button>
+                )}
+                <span className="date">{listDate(t.lastDate)}</span>
               </span>
             </div>
+            {/* Level 2: what (subject). Level 3: context (snippet), its own line when narrow. */}
+            <div className="row-body">
+              <span className="subject">{t.subject || "(no subject)"}</span>
+              <span className="snippet">{cleanSnippet(t.snippet)}</span>
+            </div>
           </div>
-          {t.starred && (
-            <IconButton
-              label="Unstar"
-              className="star on"
-              onClick={(e) => {
-                e.stopPropagation();
-                act([t.id], { kind: "unstar" });
-              }}
-            >
-              <Icon name="STARRED" />
-            </IconButton>
-          )}
-          <span className="date">{listDate(t.lastDate)}</span>
           <div className="row-actions" onClick={(e) => e.stopPropagation()}>
             {actions
               .slice(0, 3)

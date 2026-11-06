@@ -109,8 +109,8 @@ test("avatar is the selection control and shift click selects without opening", 
   const avatar = row.locator('[data-slot="avatar"]');
   await page.mouse.move(0, 0);
   await expect(checkbox).toBeVisible();
-  await expect(checkbox).toHaveCSS("width", "28px");
-  await expect(checkbox).toHaveCSS("height", "28px");
+  await expect(checkbox).toHaveCSS("width", "32px");
+  await expect(checkbox).toHaveCSS("height", "32px");
   await expect(avatar).toBeVisible();
   await row.hover();
   await expect(avatar).toBeVisible();
@@ -195,7 +195,7 @@ test("hover and keyboard actions are centered with matching backgrounds in both 
     await page.locator(".list").evaluate((element, width) => {
       element.style.width = `${width}px`;
     }, width);
-    await expect(row).toHaveCSS("height", width === 600 ? "44px" : "56px");
+    await expect(row).toHaveCSS("height", width === 600 ? "60px" : "76px");
     for (const state of ["default", "selected", "opened"]) {
       if (state === "selected") await row.getByRole("checkbox").click();
       if (state === "opened") {
@@ -248,47 +248,44 @@ test("row layout follows the list width independently of the open thread", async
     element.style.width = "600px";
   });
   await expect(row).not.toHaveClass(/narrow/);
-  await expect(row).toHaveCSS("height", "44px");
+  await expect(row).toHaveCSS("height", "60px");
   await list.evaluate((element) => {
     element.style.width = "500px";
   });
   await expect(row).toHaveClass(/narrow/);
-  await expect(row).toHaveCSS("height", "56px");
+  await expect(row).toHaveCSS("height", "76px");
 });
 
-test("wide rows fit short senders with a 12px subject gap and truncate long unread senders", async ({ page }) => {
+test("wide cards stack sender over subject and truncate long unread senders", async ({ page }) => {
   await page.locator(".list").evaluate((element) => {
     element.style.width = "800px";
   });
   const row = page.locator('[data-thread-id="today"]');
-  await expect(row).toHaveCSS("height", "44px");
+  await expect(row).toHaveCSS("height", "60px");
   await expect(row.locator(".from")).toHaveText("Matt (2)");
-  const gap = await row.evaluate((element) => {
-    const from = element.querySelector(".from");
-    const subject = element.querySelector(".subject");
-    if (!from || !subject) throw new Error("Missing sender or subject");
-    const range = document.createRange();
-    range.selectNodeContents(from);
-    return subject.getBoundingClientRect().left - range.getBoundingClientRect().right;
+  // Hierarchy: who/when on the first line, subject and snippet share the second line.
+  const layout = await row.evaluate((element) => {
+    const box = (selector: string) => element.querySelector(selector)!.getBoundingClientRect();
+    return { from: box(".from"), subject: box(".subject"), snippet: box(".snippet"), date: box(".date") };
   });
-  expect(gap).toBeGreaterThanOrEqual(11);
-  expect(gap).toBeLessThanOrEqual(16);
+  expect(layout.subject.top).toBeGreaterThanOrEqual(layout.from.bottom - 1);
+  expect(Math.abs(layout.subject.left - layout.from.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(layout.snippet.top - layout.subject.top)).toBeLessThanOrEqual(2);
+  expect(Math.abs(layout.date.top - layout.from.top)).toBeLessThanOrEqual(2);
   const longSender = page.locator('[data-thread-id="week"] .from');
   await expect(longSender).toHaveText(/\(2\)$/);
-  await expect(longSender).toHaveCSS("font-weight", "650");
+  await expect(longSender).toHaveCSS("font-weight", "600");
   await expect(longSender).toHaveCSS("text-overflow", "ellipsis");
-  expect(await longSender.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-  expect(await longSender.evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(180);
   await page.mouse.move(0, 0);
   const rightInset = await row.evaluate((element) => {
     const date = element.querySelector(".date");
     if (!date) throw new Error("Missing date");
     return element.getBoundingClientRect().right - date.getBoundingClientRect().right;
   });
-  expect(rightInset).toBeCloseTo(12, 0);
+  expect(rightInset).toBeCloseTo(13, 0);
 });
 
-test("important markers follow the unread dot in both layouts and expose a tooltip and accessible name", async ({
+test("important tags sit after the sender in both layouts and expose a tooltip and accessible name", async ({
   page,
 }) => {
   const row = page.locator('[data-thread-id="yesterday"]');
@@ -296,17 +293,18 @@ test("important markers follow the unread dot in both layouts and expose a toolt
     await page.locator(".list").evaluate((element, width) => {
       element.style.width = `${width}px`;
     }, width);
-    await expect(row).toHaveCSS("height", width === 800 ? "44px" : "56px");
+    await expect(row).toHaveCSS("height", width === 800 ? "60px" : "76px");
     const marker = row.getByRole("button", { name: "Marked important — click to unmark" });
     await expect(marker).toBeVisible();
-    await expect(marker.locator("svg")).toHaveCSS("width", "14px");
+    await expect(marker).toHaveText("Important");
     await expect(row).toHaveAccessibleName(/, important$/);
-    await expect(row.locator(".row-preview > :first-child")).toHaveClass(/bg-primary/);
-    await expect(row.locator(".row-preview > :nth-child(2)")).toHaveClass(/row-important/);
+    await expect(row.locator(".row-unread-dot")).toBeVisible();
+    // The tag sits in the head line, right after the sender, not in front of the subject.
+    await expect(row.locator(".row-head > .from + .row-tag-important")).toHaveCount(1);
     await marker.hover();
-    await expect(page.getByRole("tooltip")).toHaveText("Important");
+    await expect(page.getByRole("tooltip")).toHaveText("Click to unmark as important");
   }
-  await expect(page.locator('[data-thread-id="today"] .row-important')).toHaveCount(0);
+  await expect(page.locator('[data-thread-id="today"] .row-tag-important')).toHaveCount(0);
 });
 
 for (const activation of ["click", "Enter", "Space"]) {
@@ -330,7 +328,7 @@ test("Important label hides the redundant marker but the reading pane shows its 
   const row = page.locator('[data-thread-id="yesterday"]');
   await expect(row).toBeVisible();
   await expect(row).toHaveAccessibleName(/, important$/);
-  await expect(row.locator(".row-important")).toHaveCount(0);
+  await expect(row.locator(".row-tag-important")).toHaveCount(0);
   await row.locator(".subject").click();
   await expect(page.locator(".chips").getByText("Important", { exact: true })).toBeVisible();
   await expect(page.locator(".chips .lucide-circle-alert")).toHaveCSS("stroke", "rgb(232, 176, 75)");
