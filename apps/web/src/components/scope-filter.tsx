@@ -14,8 +14,8 @@ const scopes = [
 export const filterBadge =
   "relative h-7 gap-1.5 rounded-full border border-border px-2.5 text-[12px] text-muted-foreground hover:text-foreground [&_svg]:size-3.5";
 /** Narrow list panel (< 32rem): badges collapse to 28px icon circles; names and counts move to tooltips. */
-export const compactFilterBadge = "@max-[32rem]:w-7 @max-[32rem]:justify-center @max-[32rem]:px-0";
-export const compactHidden = "@max-[32rem]:hidden";
+export const compactFilterBadge = "@max-lg:w-7 @max-lg:justify-center @max-lg:px-0";
+export const compactHidden = "@max-lg:hidden";
 export const activeFilterBadge = "border-primary/30 bg-primary/15 text-primary";
 
 export function ScopeFilter({
@@ -32,7 +32,7 @@ export function ScopeFilter({
     <div
       role="radiogroup"
       aria-label="Mail scope"
-      className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+      className="flex min-w-0 items-center gap-1 overflow-x-auto scrollbar-none"
     >
       {scopes.map(({ id, name, icon: Icon }, index) => {
         const unread = labels.find((label) => label.id === id)?.unread ?? 0;
@@ -87,7 +87,7 @@ export function ScopeFilter({
                     {/* Compact mode: a notification dot replaces the count. */}
                     <span
                       aria-hidden="true"
-                      className="absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background @max-[32rem]:block"
+                      className="absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background @max-lg:block"
                     />
                   </>
                 )}

@@ -105,7 +105,7 @@ export function DateRangeFilter({ range, onChange }: { range: DateRange; onChang
                 {active && (
                   <span
                     aria-hidden="true"
-                    className="absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background @max-[32rem]:block"
+                    className="absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background @max-lg:block"
                   />
                 )}
               </Button>

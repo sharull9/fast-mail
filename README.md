@@ -63,6 +63,8 @@ bun run dev:web:standalone  # same, but always uses the independent standalone p
 bun run dev:ui              # Vite only, when a mail service is already running and proxying correctly
 bun run test                # bun test in packages that define it
 bun run check               # vp check (format, lint, type check) + per-package tsc
+bun run tailwind:check      # check canonical Tailwind classes against the app theme
+bun run tailwind:fix        # apply canonical Tailwind class suggestions, preserving px/rem units
 bun run dist                # web build + compiled sidecar + electron-builder installer (apps/desktop/release)
 ```
 

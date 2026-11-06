@@ -15,7 +15,9 @@
     "dev:ui": "vp run --no-cache @mailfast/web#dev",
     "build": "vp run -r build",
     "test": "vp run -r test",
-    "check": "vp check && vp run -r check",
+    "check": "tailwind:fix && vp check && vp run -r check",
+    "tailwind:check": "vp run @mailfast/web#tailwind:check",
+    "tailwind:fix": "vp run --no-cache @mailfast/web#tailwind:fix",
     "db:generate": "vp run @mailfast/db#generate",
     "dist": "vp run @mailfast/desktop#dist",
     "ready": "vp check && vp run -r test && vp run -r build"

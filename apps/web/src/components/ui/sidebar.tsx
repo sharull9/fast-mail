@@ -146,7 +146,7 @@ function SidebarProvider({
           }
           className={cn(
             "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
-            resizing && "[&_[data-slot=sidebar-gap]]:transition-none [&_[data-slot=sidebar-container]]:transition-none",
+            resizing && "**:data-[slot=sidebar-gap]:transition-none **:data-[slot=sidebar-container]:transition-none",
             className,
           )}
           {...props}
@@ -235,8 +235,8 @@ function Sidebar({
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
           side === "left"
-            ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-            : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
+            ? "left-0 group-data-[collapsible=offcanvas]:-left-(--sidebar-width)"
+            : "right-0 group-data-[collapsible=offcanvas]:-right-(--sidebar-width)",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -301,7 +301,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       aria-label="Resize sidebar"
       title="Drag to resize, click to toggle, double-click to reset"
       className={cn(
-        "absolute inset-y-0 -right-[3px] z-20 hidden w-[6px] touch-none cursor-col-resize md:block after:absolute after:inset-y-0 after:left-[2px] after:w-px after:bg-sidebar-border hover:after:bg-primary focus-visible:after:bg-primary",
+        "absolute inset-y-0 right-[-3px] z-20 hidden w-[6px] touch-none cursor-col-resize md:block after:absolute after:inset-y-0 after:left-[2px] after:w-px after:bg-sidebar-border hover:after:bg-primary focus-visible:after:bg-primary",
         resizing && "after:bg-primary",
         className,
       )}

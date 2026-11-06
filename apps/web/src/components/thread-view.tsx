@@ -144,11 +144,8 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
         <h1 className="thread-subject">{t.subject || "(no subject)"}</h1>
         <div className="chips">
           {t.important && (
-            <Badge variant="secondary" className="bg-[var(--important)]/10 text-[var(--important)]">
-              <CircleAlert
-                aria-hidden="true"
-                className="size-3.5 fill-[var(--important)]/20 stroke-[var(--important)]"
-              />
+            <Badge variant="secondary" className="bg-(--important)/10 text-(--important)">
+              <CircleAlert aria-hidden="true" className="size-3.5 fill-(--important)/20 stroke-(--important)" />
               Important
             </Badge>
           )}
@@ -165,7 +162,7 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
             <li key={m.id} className={cn("py-2", m.unread && "border-l-2 border-l-primary pl-4")}>
               <section>
                 <MessageHeader message={m} account={account} />
-                <p className="mt-4 break-words text-[14px] leading-relaxed text-secondary-foreground">
+                <p className="mt-4 wrap-break-word text-[14px] leading-relaxed text-secondary-foreground">
                   {cleanSnippet(m.snippet) || <span className="text-muted-foreground">(no preview)</span>}
                 </p>
               </section>
@@ -236,13 +233,13 @@ function MessageHeader({ message: m, account }: { message: Message; account: str
         {open && (
           <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg border bg-card px-3 py-2.5 text-xs">
             <dt className="text-muted-foreground">From</dt>
-            <dd className="min-w-0 break-words">{full([m.from])}</dd>
+            <dd className="min-w-0 wrap-break-word">{full([m.from])}</dd>
             <dt className="text-muted-foreground">To</dt>
-            <dd className="min-w-0 break-words">{to.length ? full(to) : "(undisclosed)"}</dd>
+            <dd className="min-w-0 wrap-break-word">{to.length ? full(to) : "(undisclosed)"}</dd>
             {cc.length > 0 && (
               <>
                 <dt className="text-muted-foreground">Cc</dt>
-                <dd className="min-w-0 break-words">{full(cc)}</dd>
+                <dd className="min-w-0 wrap-break-word">{full(cc)}</dd>
               </>
             )}
             <dt className="text-muted-foreground">Date</dt>
