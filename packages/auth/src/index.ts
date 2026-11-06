@@ -1,10 +1,11 @@
 import { betterAuth } from "better-auth";
+import { multiSession } from "better-auth/plugins";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
 /**
  * Better Auth configuration for Mailfast.
  *
- * Mailfast is a single-user desktop app, so Better Auth is used for what it is
+ * Mailfast is a local desktop app, so Better Auth is used for what it is
  * good at here: the Google OAuth flow (PKCE + state), storing the Google
  * account with encrypted access/refresh tokens in our SQLite DB, and handing
  * back a valid (auto-refreshed) access token for Gmail API calls. The app's
@@ -41,6 +42,7 @@ export interface MailAuthOptions {
 export function createMailAuth(opts: MailAuthOptions) {
   return betterAuth({
     appName: "Mailfast",
+    plugins: [multiSession({ maximumSessions: 10 })],
     baseURL: opts.baseURL,
     basePath: AUTH_BASE_PATH,
     secret: opts.secret,
@@ -94,6 +96,7 @@ export type MailAuth = ReturnType<typeof createMailAuth>;
 export async function startGoogleSignIn(auth: MailAuth, request: Request, callbackPath: string): Promise<Response> {
   const res = await auth.api.signInSocial({
     body: { provider: "google", callbackURL: callbackPath, errorCallbackURL: callbackPath, disableRedirect: true },
+    // Use sign-in, never linkSocialAccount: different emails must create distinct users.
     headers: request.headers,
     asResponse: true,
   });

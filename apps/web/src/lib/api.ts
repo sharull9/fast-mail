@@ -3,6 +3,8 @@ import type {
   ConnectionStatus,
   Label,
   ListThreadsResponse,
+  ThreadDateRange,
+  MailAccount,
   PairingGrant,
   SyncStatus,
   ThreadAction,
@@ -26,8 +28,31 @@ const UI_BOOTSTRAP_HEADER = "x-mailfast-ui";
 let serverPaired = false;
 let requiresPairing = false;
 
+let activeAccountId: string | null =
+  typeof window === "undefined" ? null : localStorage.getItem("mailfast.active-account");
+
+export function getActiveAccountId() {
+  return activeAccountId;
+}
+export function setActiveAccountId(id: string | null) {
+  activeAccountId = id;
+  if (typeof window !== "undefined") {
+    if (id) localStorage.setItem("mailfast.active-account", id);
+    else localStorage.removeItem("mailfast.active-account");
+  }
+}
+
+/** Older sidecars and fixtures expose only the active email. */
+export function normalizeAuthStatus(status: AuthStatus): AuthStatus {
+  const accounts: MailAccount[] =
+    status.accounts ??
+    (status.account ? [{ id: status.account, email: status.account, name: null, image: null, unread: 0 }] : []);
+  return { ...status, accounts, activeAccountId: status.activeAccountId ?? accounts[0]?.id ?? null };
+}
+
 function request(path: string, init?: RequestInit & { json?: unknown }): Promise<Response> {
   const headers = new Headers(init?.headers);
+  if (!headers.has("x-mailfast-account") && activeAccountId) headers.set("x-mailfast-account", activeAccountId);
   if (init?.json !== undefined) headers.set("content-type", "application/json");
   return fetch(`/api${path}`, {
     ...init,
@@ -94,23 +119,43 @@ export const api = {
     if (typeof window !== "undefined") window.dispatchEvent(new Event("mailfast:session-invalid"));
   },
   createPairingGrant: () => call<PairingGrant>("/pairing-grants", { json: {} }),
-  authStatus: () => call<AuthStatus>("/auth/status"),
+  authStatus: async (signal?: AbortSignal) => normalizeAuthStatus(await call<AuthStatus>("/auth/status", { signal })),
+  setActiveAccount: async (id: string) =>
+    normalizeAuthStatus(await call<AuthStatus>("/accounts/active", { json: { id } })),
+  logoutAccount: async (id: string) =>
+    normalizeAuthStatus(await call<AuthStatus>(`/accounts/${encodeURIComponent(id)}/logout`, { json: {} })),
+  events: (signal: AbortSignal) => {
+    requirePaired();
+    return request("/events", { signal });
+  },
   saveClient: (clientId: string, clientSecret: string) =>
     call<AuthStatus>("/auth/config", { json: { clientId, clientSecret } }),
   login: () => call<{ url: string }>("/auth/login", { json: {} }),
   logout: () => call<AuthStatus>("/auth/logout", { json: {} }),
 
-  status: () => call<SyncStatus>("/status"),
+  status: (accountId = activeAccountId) => call<SyncStatus>("/status", { headers: accountHeaders(accountId) }),
   syncNow: () => call<{ ok: true }>("/sync", { json: {} }),
 
-  labels: (signal?: AbortSignal) => call<Label[]>("/labels", { signal }),
-  threads: (labelId: string, limit: number, signal?: AbortSignal) =>
-    call<ListThreadsResponse>(`/threads?label=${encodeURIComponent(labelId)}&limit=${limit}`, { signal }),
-  thread: (id: string, signal?: AbortSignal) => call<ThreadDetail>(`/threads/${encodeURIComponent(id)}`, { signal }),
-  search: (q: string, signal?: AbortSignal) =>
-    call<ListThreadsResponse>(`/search?q=${encodeURIComponent(q)}`, { signal }),
-  act: (threadIds: string[], action: ThreadAction) =>
-    call<unknown>("/threads/actions", { json: { threadIds, action } }),
+  labels: (signal?: AbortSignal, accountId = activeAccountId) =>
+    call<Label[]>("/labels", { signal, headers: accountHeaders(accountId) }),
+  threads: (
+    labelId: string,
+    limit: number,
+    signal?: AbortSignal,
+    accountId = activeAccountId,
+    range: ThreadDateRange = {},
+  ) => {
+    const params = new URLSearchParams({ label: labelId, limit: String(limit) });
+    if (range.after !== undefined) params.set("after", String(range.after));
+    if (range.before !== undefined) params.set("before", String(range.before));
+    return call<ListThreadsResponse>(`/threads?${params}`, { signal, headers: accountHeaders(accountId) });
+  },
+  thread: (id: string, signal?: AbortSignal, accountId = activeAccountId) =>
+    call<ThreadDetail>(`/threads/${encodeURIComponent(id)}`, { signal, headers: accountHeaders(accountId) }),
+  search: (q: string, signal?: AbortSignal, accountId = activeAccountId) =>
+    call<ListThreadsResponse>(`/search?q=${encodeURIComponent(q)}`, { signal, headers: accountHeaders(accountId) }),
+  act: (threadIds: string[], action: ThreadAction, accountId = activeAccountId) =>
+    call<unknown>("/threads/actions", { json: { threadIds, action }, headers: accountHeaders(accountId) }),
   prefetch: (hint: { threadIds?: string[]; labelIds?: string[] }) =>
     call<{ ok: true }>("/prefetch", { json: hint }).catch(() => undefined),
 };
@@ -120,4 +165,8 @@ export function openExternal(url: string) {
   const bridge = (window as { mailfast?: { openExternal(url: string): void } }).mailfast;
   if (bridge) bridge.openExternal(url);
   else window.open(url, "_blank", "noopener");
+}
+
+function accountHeaders(id: string | null): HeadersInit {
+  return id ? { "x-mailfast-account": id } : {};
 }

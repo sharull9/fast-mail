@@ -70,7 +70,8 @@ async function mockMail(page: Page) {
 
 async function expectCenteredTabs(page: Page) {
   const tabs = page.getByRole("tablist", { name: "Inbox categories" });
-  const toolbar = page.locator(".list-head");
+
+  const toolbar = page.locator(".selection-bar");
   await expect(tabs).toBeVisible();
   const metrics = await tabs.evaluate((element) => ({
     scrollHeight: element.scrollHeight,
@@ -90,15 +91,19 @@ test.beforeEach(async ({ page }) => {
   await mockMail(page);
 });
 
-test("one compact toolbar contains categories and counts, with an empty preview", async ({ page }) => {
-  // Next to the category tabs the counts only show once the list panel is >= 560px wide.
-  await page.setViewportSize({ width: 1800, height: 900 });
+test("two compact rows contain scopes, dates, categories and counts, with an empty preview", async ({ page }) => {
+  // Counts fit next to the scope and date filters once the list panel is >= 820px wide.
+
+  await page.setViewportSize({ width: 2600, height: 900 });
   await page.goto("/mail/INBOX");
   const toolbar = page.locator(".list-head");
   await expect(page.getByRole("heading", { name: "Inbox", exact: true })).toHaveCount(0);
-  await expect(toolbar.getByRole("tablist", { name: "Inbox categories" })).toBeVisible();
+
+  await expect(page.locator(".selection-bar").getByRole("tablist", { name: "Inbox categories" })).toBeVisible();
   await expect(toolbar.getByText("1,200 conversations · 10 unread", { exact: true })).toBeVisible();
   expect(await toolbar.evaluate((element) => element.getBoundingClientRect().height)).toBe(44);
+
+  await expect(toolbar.getByRole("radio", { name: /Inbox/ })).toHaveAttribute("aria-checked", "true");
   await expectCenteredTabs(page);
   await expect(page.getByText("No conversation selected", { exact: true })).toBeVisible();
   await expect(page.getByText("Pick one from the list, or press j / k")).toBeVisible();
@@ -135,7 +140,7 @@ test("list starts at forty percent and both panels stop at thirty percent", asyn
   await page.reload();
   await expect.poll(fraction).toBeGreaterThan(saved - 0.01);
   await expect.poll(fraction).toBeLessThan(saved + 0.01);
-  await expect(page.locator(".list-head").getByText("1,200 conversations · 10 unread")).toBeVisible();
+  await expect(page.locator(".selection-bar").getByText("1–1 of 1,200")).toBeVisible();
   await handle.focus();
   await page.keyboard.press("Home");
   await expect(page.locator(".list-head").getByText("1,200 conversations · 10 unread")).toBeHidden();

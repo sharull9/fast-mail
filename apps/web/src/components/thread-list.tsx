@@ -1,7 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronRight, CircleAlert, MoreHorizontal } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, MoreHorizontal } from "lucide-react";
 import type { ThreadAction, ThreadRow } from "@mailfast/shared";
 import { authQuery, prefetchThread, runThreadAction } from "@/lib/data";
 import { cleanSnippet, dateGroup, listDate, sendersLabel } from "@/lib/format";
@@ -39,6 +39,8 @@ interface Props {
   empty: string;
   labelId?: string;
   total?: number;
+  toolbarStart?: ReactNode;
+  emptyAction?: ReactNode;
 }
 
 export function act(ids: string[], action: ThreadAction) {
@@ -61,7 +63,18 @@ type ListItem =
   | { kind: "header"; key: string; label: string; count: number; collapsed: boolean }
   | { kind: "thread"; thread: ThreadRow };
 
-export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached, empty, labelId, total }: Props) {
+export function ThreadList({
+  threads,
+  selectedId,
+  onOpen,
+  onClose,
+  onEndReached,
+  empty,
+  labelId,
+  total,
+  toolbarStart,
+  emptyAction,
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingScroll = useRef<string | null>(null);
   const [narrow, setNarrow] = useState(false);
@@ -123,7 +136,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
   const virtualizer = useVirtualizer({
     count: flat.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (flat[index]?.kind === "header" ? 32 : narrow ? ROW_NARROW : ROW_WIDE),
+    estimateSize: (index) => (flat[index]?.kind === "header" ? 36 : narrow ? ROW_NARROW : ROW_WIDE),
     overscan: 15,
   });
   useEffect(() => {
@@ -202,7 +215,8 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
         return;
       if (el.closest(".group-header") && (e.key === "Enter" || e.key === " ")) return;
       if (el.closest('[role="checkbox"]') && (e.key === "Enter" || e.key === " ")) return;
-      if (el.closest(".row-tag, .row-star") && (e.key === "Enter" || e.key === " ")) return;
+      if (el.closest(".row-important, .row-star") && (e.key === "Enter" || e.key === " ")) return;
+      if (el.closest("button, [role=tab], [role=radio]") && (e.key === "Enter" || e.key === " ")) return;
       const { threads, selectedId, onOpen, onClose, selection } = state.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
@@ -290,13 +304,17 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
   const trash = labelId === "TRASH" ? "untrash" : "trash";
   return (
     <>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3 text-xs">
+      <div className="selection-bar flex h-10 shrink-0 items-center gap-2 border-b px-3 text-xs">
         <Checkbox
           aria-label="Select all"
           checked={count > 0 && count === ids.length ? true : count > 0 ? "indeterminate" : false}
           onCheckedChange={() => (count === ids.length ? selection.clear() : selection.selectAll())}
         />
-        <span className="shrink-0 text-muted-foreground">{count ? `${count} selected` : "Select all"}</span>
+        {count ? (
+          <span className="shrink-0 text-muted-foreground">{count} selected</span>
+        ) : (
+          (toolbarStart ?? <span className="shrink-0 text-muted-foreground">Select all</span>)
+        )}
         {count ? (
           <div className="ml-auto flex items-center gap-0.5">
             {(
@@ -308,7 +326,12 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
                 { kind: "star", name: "Star", icon: "STARRED" },
               ] satisfies { kind: ThreadAction["kind"]; name: string; icon: string }[]
             ).map((a) => (
-              <IconButton key={a.kind} label={a.name} onClick={() => bulk({ kind: a.kind })}>
+              <IconButton
+                key={a.kind}
+                label={a.name}
+                variant={a.kind === "trash" ? "ghost-destructive" : "ghost"}
+                onClick={() => bulk({ kind: a.kind })}
+              >
                 <Icon name={a.icon} />
               </IconButton>
             ))}
@@ -327,8 +350,16 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
             </DropdownMenu>
           </div>
         ) : (
-          <span className="ml-auto text-muted-foreground tabular-nums">
-            {threads.length ? `1–${threads.length} of ${Math.max(threads.length, total ?? 0)}` : "0 of 0"}
+          <span
+            className={cn(
+              "ml-auto shrink-0 whitespace-nowrap text-muted-foreground tabular-nums @max-[26rem]:hidden",
+              // Next to the inbox category tabs the count only fits in a wider list panel.
+              toolbarStart && "@max-xl:hidden",
+            )}
+          >
+            {threads.length
+              ? `1–${threads.length} of ${Math.max(threads.length, total ?? 0).toLocaleString()}`
+              : "0 of 0"}
           </span>
         )}
       </div>
@@ -336,6 +367,7 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
         <Empty>
           <EmptyHeader>
             <EmptyDescription>{empty}</EmptyDescription>
+            {emptyAction}
           </EmptyHeader>
         </Empty>
       ) : (
@@ -351,12 +383,18 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
                     type="button"
                     aria-expanded={!item.collapsed}
                     onClick={() => setGroupCollapsed(item.key, !item.collapsed)}
-                    className="group-header absolute inset-x-0 flex h-8 w-full items-center gap-1.5 bg-background/95 px-5 text-left text-[11px] font-semibold tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
+                    className="group-header group/header absolute inset-x-0 flex h-9 w-full items-center gap-2 border-b border-border/60 bg-background/95 px-5 text-left text-[12px] font-semibold tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
                     style={{ transform: `translateY(${v.start}px)` }}
                   >
-                    {item.collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+                    <ChevronRight
+                      aria-hidden="true"
+                      className={cn(
+                        "size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 group-hover/header:text-foreground",
+                        !item.collapsed && "rotate-90",
+                      )}
+                    />
                     {item.label}
-                    <span className="ml-0.5 rounded-full bg-foreground/[0.06] px-1.5 py-px text-[10px] font-medium tracking-normal tabular-nums">
+                    <span className="rounded-full bg-foreground/[0.07] px-1.5 py-px text-[10.5px] font-medium tracking-normal tabular-nums group-hover/header:bg-foreground/12 group-hover/header:text-foreground">
                       {item.count}
                     </span>
                   </button>
@@ -389,8 +427,8 @@ export function ThreadList({ threads, selectedId, onOpen, onClose, onEndReached,
 }
 
 // Card heights, including the 4px gutter between cards (2px above and below each card).
-const ROW_WIDE = 64;
-const ROW_NARROW = 80;
+const ROW_WIDE = 76;
+const ROW_NARROW = 96;
 const ROW_GUTTER = 2;
 
 const Row = memo(function Row({
@@ -501,26 +539,25 @@ const Row = memo(function Row({
             {/* Level 1: who + when, with signals as compact tags. */}
             <div className="row-head">
               <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
-              {t.important && showImportant && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="Marked important — click to unmark"
-                      className="row-tag row-tag-important"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        act([t.id], { kind: "unimportant" });
-                      }}
-                    >
-                      <CircleAlert aria-hidden="true" className="size-3" strokeWidth={2.25} />
-                      Important
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Click to unmark as important</TooltipContent>
-                </Tooltip>
-              )}
               <span className="row-meta">
+                {t.important && showImportant && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Marked important — click to unmark"
+                        className="row-important"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          act([t.id], { kind: "unimportant" });
+                        }}
+                      >
+                        <CircleAlert aria-hidden="true" className="size-3.5" strokeWidth={2.25} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Important</TooltipContent>
+                  </Tooltip>
+                )}
                 {t.starred && (
                   <button
                     type="button"
@@ -549,7 +586,12 @@ const Row = memo(function Row({
               .filter((_, i) => i !== 1)
               .concat(actions.slice(1, 2))
               .map((a) => (
-                <IconButton key={a.kind} label={a.name} onClick={() => act([t.id], { kind: a.kind })}>
+                <IconButton
+                  key={a.kind}
+                  label={a.name}
+                  variant={a.kind === "trash" ? "ghost-destructive" : "ghost"}
+                  onClick={() => act([t.id], { kind: a.kind })}
+                >
                   <Icon name={a.icon} />
                 </IconButton>
               ))}
@@ -568,7 +610,11 @@ const Row = memo(function Row({
         </ContextMenuItem>
         <ContextMenuSeparator />
         {actions.map((a) => (
-          <ContextMenuItem key={a.kind} onSelect={() => onAction(t.id, { kind: a.kind })}>
+          <ContextMenuItem
+            key={a.kind}
+            variant={a.kind === "trash" ? "destructive" : "default"}
+            onSelect={() => onAction(t.id, { kind: a.kind })}
+          >
             <Icon name={a.icon} />
             {a.name}
             {a.shortcut && <ContextMenuShortcut>{a.shortcut}</ContextMenuShortcut>}

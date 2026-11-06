@@ -1,5 +1,12 @@
 import type { MailStore, MessageInput } from "@mailfast/db";
-import { actionDelta, isInboxCategory, type SyncPhase, type SyncStatus, type ThreadAction } from "@mailfast/shared";
+import {
+  actionDelta,
+  isInboxCategory,
+  type SyncPhase,
+  type SyncStatus,
+  type ThreadAction,
+  type ThreadDateRange,
+} from "@mailfast/shared";
 import type { Auth } from "@/auth.ts";
 import type { Events } from "@/events.ts";
 import { GmailError, type Gmail } from "@/gmail.ts";
@@ -30,15 +37,20 @@ export class SyncEngine {
   private labelCountsAt = 0;
   private inflight = new Map<string, Promise<void>>();
   private generation = 0;
+  private tasks = new Set<Promise<unknown>>();
+
+  private track<T>(task: Promise<T>): Promise<T> {
+    this.tasks.add(task);
+    void task.finally(() => this.tasks.delete(task)).catch(() => {});
+    return task;
+  }
 
   constructor(
     private readonly store: MailStore,
     private readonly gmail: Gmail,
-    private readonly auth: Auth,
+    private readonly auth: Pick<Auth, "status" | "account">,
     private readonly events: Events,
-  ) {
-    auth.onSignedIn(() => this.restart());
-  }
+  ) {}
 
   private get me() {
     return this.auth.account();
@@ -67,18 +79,21 @@ export class SyncEngine {
     if (this.running || !this.auth.status().signedIn) return;
     this.running = true;
     const gen = ++this.generation;
-    void this.realtimeLoop(gen);
-    void this.backfillLoop(gen);
+    void this.track(this.realtimeLoop(gen));
+    void this.track(this.backfillLoop(gen));
   }
 
-  stop() {
+  async stop() {
     this.running = false;
     this.generation++;
     this.wake();
+    while (this.tasks.size || this.inflight.size) {
+      await Promise.allSettled([...this.tasks, ...this.inflight.values()]);
+    }
   }
 
-  restart() {
-    this.stop();
+  async restart() {
+    await this.stop();
     this.start();
   }
 
@@ -124,12 +139,13 @@ export class SyncEngine {
           await this.flushOutbox();
           await this.incremental();
         }
-        if (Date.now() - this.labelCountsAt > LABEL_COUNTS_MS) void this.refreshLabelCounts();
+        if (Date.now() - this.labelCountsAt > LABEL_COUNTS_MS) void this.track(this.refreshLabelCounts());
         this.lastSyncAt = Date.now();
         this.setPhase(this.store.kvGet("backfill_done") === "1" ? "idle" : "backfill");
       } catch (e) {
         this.handleError(e);
       }
+      if (!this.running || gen !== this.generation) return;
       await new Promise<void>((resolve) => {
         const t = setTimeout(resolve, POLL_MS);
         this.wakeRealtime = () => {
@@ -175,7 +191,7 @@ export class SyncEngine {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[sync]", msg);
     if (!this.auth.status().signedIn) {
-      this.stop();
+      void this.stop();
       this.setPhase("signed-out", "Signed out. Please sign in again.");
     } else this.setPhase("error", msg);
   }
@@ -195,7 +211,7 @@ export class SyncEngine {
       Priority.Interactive,
     );
     this.store.kvSet("label_synced:INBOX", "1");
-    void this.refreshLabelCounts();
+    void this.track(this.refreshLabelCounts());
   }
 
   private async incremental() {
@@ -344,7 +360,8 @@ export class SyncEngine {
   }
 
   /** Pull the newest page of a label that backfill hasn't covered yet. */
-  ensureLabel(labelId: string): Promise<void> {
+  ensureLabel(labelId: string, range: ThreadDateRange & { limit?: number } = {}): Promise<void> {
+    if (range.after !== undefined || range.before !== undefined) return this.ensureWindow(labelId, range);
     // Inbox category tabs (Primary/Social/Updates) are virtual: they page the INBOX listing.
     if (isInboxCategory(labelId)) labelId = "INBOX";
     if (!this.auth.status().signedIn || labelId === "ALL") return Promise.resolve();
@@ -360,6 +377,51 @@ export class SyncEngine {
         Priority.Interactive,
       );
       this.store.kvSet(`label_synced:${labelId}`, "1");
+    });
+  }
+
+  private ensureWindow(labelId: string, range: ThreadDateRange & { limit?: number }): Promise<void> {
+    if (!this.auth.status().signedIn) return Promise.resolve();
+    if (range.after !== undefined && range.before !== undefined && range.after >= range.before)
+      return Promise.resolve();
+    const gmailLabel = isInboxCategory(labelId) ? "INBOX" : labelId;
+    const covered = this.store.kvGet("backfill_done") === "1" && !ON_DEMAND_LABELS.has(gmailLabel);
+    const key = `window:${labelId}:${range.after ?? ""}:${range.before ?? ""}`;
+    if (covered || this.store.kvGet(key) || this.store.countThreads(labelId, range) >= (range.limit ?? 100))
+      return Promise.resolve();
+    return this.once(key, async () => {
+      // Widen to whole seconds; SQLite applies the exact millisecond bounds.
+      const q = [
+        range.after === undefined ? "" : `after:${Math.floor(range.after / 1000) - 1}`,
+        range.before === undefined ? "" : `before:${Math.ceil(range.before / 1000)}`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      let pageToken: string | undefined;
+      const gen = this.generation;
+      do {
+        if (gen !== this.generation) return;
+        const page = await this.gmail.listMessageIds(
+          {
+            labelId: gmailLabel === "ALL" ? undefined : gmailLabel,
+            q,
+            pageToken,
+            maxResults: BACKFILL_PAGE,
+            includeSpamTrash: ON_DEMAND_LABELS.has(gmailLabel),
+          },
+          Priority.Interactive,
+        );
+        // Fetch whole threads so a newer message outside the window cannot give a false lastDate.
+        for (const id of new Set((page.messages ?? []).map((m) => m.threadId))) {
+          if (gen !== this.generation) return;
+          if (!this.store.getThread(id)?.complete) {
+            await this.ensureThread(id, true);
+            if (!this.store.getThread(id)?.complete) throw new Error(`Could not cache thread ${id}`);
+          }
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+      if (gen === this.generation) this.store.kvSet(key, "1");
     });
   }
 }

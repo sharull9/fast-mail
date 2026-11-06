@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
 import { authQuery, labelsCollection, threadQuery } from "@/lib/data";
-import { cleanSnippet, HIDDEN_LABELS, labelName, longDate } from "@/lib/format";
+import { cleanSnippet, HIDDEN_LABELS, labelName, longDate, parseAddresses } from "@/lib/format";
 import { openExternal } from "@/lib/api";
 import { act } from "@/components/thread-list";
 
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Icon } from "@/components/icon";
-import { CircleAlert, MoreHorizontal, X } from "lucide-react";
+import { ChevronDown, CircleAlert, MoreHorizontal, X } from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -81,7 +81,8 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
   const inTrash = t.labelIds.includes("TRASH");
 
   return (
-    <div className="pane h-full">
+    // The reading pane is its own size container: it is resizable, so its layout follows its width, not the window's.
+    <div className="pane @container h-full">
       <div className="toolbar">
         <IconButton
           label={inInbox ? "Archive" : "Move to Inbox"}
@@ -91,6 +92,7 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
         </IconButton>
         <IconButton
           label={inTrash ? "Restore" : "Delete"}
+          variant={inTrash ? "ghost" : "ghost-destructive"}
           onClick={() => act([threadId], { kind: inTrash ? "untrash" : "trash" })}
         >
           <Icon name="TRASH" />
@@ -160,22 +162,9 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
 
         <ol className="divide-y">
           {data.messages.map((m) => (
-            <li key={m.id} className={cn("py-6", m.unread && "border-l-2 border-l-primary pl-4")}>
+            <li key={m.id} className={cn("py-2", m.unread && "border-l-2 border-l-primary pl-4")}>
               <section>
-                <div className="flex items-start gap-3">
-                  <MailAvatar name={m.from.name} email={m.from.email} className="size-9" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <span className="font-semibold">{m.from.name || m.from.email}</span>
-                      <time className="text-xs text-muted-foreground" dateTime={new Date(m.date).toISOString()}>
-                        {longDate(m.date)}
-                      </time>
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">{m.from.email}</p>
-                    <p className="mt-1 break-words text-xs text-muted-foreground">To: {m.to || "(undisclosed)"}</p>
-                    {m.cc && <p className="break-words text-xs text-muted-foreground">Cc: {m.cc}</p>}
-                  </div>
-                </div>
+                <MessageHeader message={m} account={account} />
                 <p className="mt-4 break-words text-[14px] leading-relaxed text-secondary-foreground">
                   {cleanSnippet(m.snippet) || <span className="text-muted-foreground">(no preview)</span>}
                 </p>
@@ -192,6 +181,75 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
           </Button>
         </div>
       </footer>
+    </div>
+  );
+}
+
+type Message = { from: { name: string; email: string }; to: string; cc: string; date: number };
+
+/**
+ * Sender line (name, address, date) over a one-line recipient summary ("to me, Ann · cc Bob").
+ * The summary toggles a details card with every full address.
+ */
+function MessageHeader({ message: m, account }: { message: Message; account: string }) {
+  const [open, setOpen] = useState(false);
+  const to = parseAddresses(m.to);
+  const cc = parseAddresses(m.cc);
+  const isMe = (email: string) => !!account && email.toLowerCase() === account.toLowerCase();
+  const short = (a: { name: string; email: string }) => (isMe(a.email) ? "me" : a.name || a.email);
+  const summary = [
+    to.length ? `to ${to.map(short).join(", ")}` : "to (undisclosed)",
+    cc.length ? `cc ${cc.map(short).join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const full = (list: { name: string; email: string }[]) =>
+    list.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(", ");
+  return (
+    <div className="flex items-start gap-3">
+      <MailAvatar name={m.from.name} email={m.from.email} className="size-9" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[14px] font-semibold">{m.from.name || m.from.email}</span>
+          {m.from.name && (
+            <span className="truncate text-xs text-muted-foreground @max-[30rem]:hidden">{m.from.email}</span>
+          )}
+          <time
+            className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground tabular-nums"
+            dateTime={new Date(m.date).toISOString()}
+          >
+            {longDate(m.date)}
+          </time>
+        </div>
+        <button
+          type="button"
+          aria-expanded={open}
+          className="mt-0.5 inline-flex max-w-full items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className="truncate">{summary}</span>
+          <ChevronDown
+            aria-hidden="true"
+            className={cn("size-3 shrink-0 transition-transform", open && "rotate-180")}
+          />
+        </button>
+        {open && (
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg border bg-card px-3 py-2.5 text-xs">
+            <dt className="text-muted-foreground">From</dt>
+            <dd className="min-w-0 break-words">{full([m.from])}</dd>
+            <dt className="text-muted-foreground">To</dt>
+            <dd className="min-w-0 break-words">{to.length ? full(to) : "(undisclosed)"}</dd>
+            {cc.length > 0 && (
+              <>
+                <dt className="text-muted-foreground">Cc</dt>
+                <dd className="min-w-0 break-words">{full(cc)}</dd>
+              </>
+            )}
+            <dt className="text-muted-foreground">Date</dt>
+            <dd>{new Date(m.date).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}</dd>
+          </dl>
+        )}
+      </div>
     </div>
   );
 }

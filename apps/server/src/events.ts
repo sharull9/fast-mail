@@ -1,4 +1,4 @@
-import type { ServerEvent } from "@mailfast/shared";
+import type { ServerEvent, ServerEventData } from "@mailfast/shared";
 
 /**
  * Server-sent events hub. Label change notifications are coalesced over a
@@ -12,8 +12,11 @@ export class Events {
   private labelsDirty = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor() {
-    setInterval(() => this.write(": keepalive\n\n"), 20_000).unref?.();
+  constructor(
+    private readonly accountId?: string,
+    private readonly forward?: (ev: ServerEvent) => void,
+  ) {
+    if (!forward) setInterval(() => this.write(": keepalive\n\n"), 20_000).unref?.();
   }
 
   stream(): Response {
@@ -33,8 +36,10 @@ export class Events {
     });
   }
 
-  send(ev: ServerEvent) {
-    this.write(`data: ${JSON.stringify(ev)}\n\n`);
+  send(ev: ServerEventData & { accountId?: string }) {
+    const scoped = { ...ev, accountId: this.accountId ?? ev.accountId ?? "" };
+    if (this.forward) this.forward(scoped);
+    else this.write(`data: ${JSON.stringify(scoped)}\n\n`);
   }
 
   threadsChanged(labelIds: Iterable<string>) {

@@ -7,7 +7,7 @@ import {
   type GoogleClient,
   type MailAuth,
 } from "@mailfast/auth";
-import { authSchema, type MailStore } from "@mailfast/db";
+import { authSchema, type AppStore } from "@mailfast/db";
 import { env } from "@mailfast/env/server";
 import type { AuthStatus } from "@mailfast/shared";
 
@@ -23,13 +23,13 @@ const TICKET_TTL = 10 * 60_000;
 
 export class Auth {
   private instance: MailAuth;
-  private access: { token: string; expires: number } | null = null;
-  private refreshing: Promise<string> | null = null;
+  private access = new Map<string, { token: string; expires: number }>();
+  private refreshing = new Map<string, Promise<string>>();
   private tickets = new Map<string, number>();
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(id: string) => void>();
 
   constructor(
-    private readonly store: MailStore,
+    private readonly store: AppStore,
     private readonly baseURL: string,
     private readonly secret: string,
   ) {
@@ -37,7 +37,7 @@ export class Auth {
   }
 
   /** Secret for Better Auth: from Electron (OS keychain via safeStorage), else generated and kept in the DB. */
-  static secretFor(store: MailStore, fromEnv: string | undefined): string {
+  static secretFor(store: AppStore, fromEnv: string | undefined): string {
     if (fromEnv) return fromEnv; // length validated by @mailfast/env
     let s = store.kvGet("secret_key_fallback");
     if (!s) {
@@ -55,7 +55,7 @@ export class Auth {
       secret: this.secret,
       baseURL: this.baseURL,
       google: this.client(),
-      onGoogleAccount: () => setTimeout(() => this.afterSignIn(), 0),
+      onGoogleAccount: ({ accountId }) => setTimeout(() => this.afterSignIn(accountId), 0),
     });
   }
 
@@ -75,33 +75,57 @@ export class Auth {
     this.instance = this.build();
   }
 
-  private google() {
-    const acc = this.store.googleAccount();
-    return acc && hasGmailScope(acc.scope) ? acc : null;
+  accounts() {
+    return this.store.googleAccounts().filter((acc) => hasGmailScope(acc.scope));
   }
 
-  account(): string | null {
-    return this.google()?.email ?? null;
+  activeId(): string | null {
+    const accounts = this.accounts();
+    const saved = this.store.kvGet("active_account");
+    const id = accounts.find((a) => a.accountId === saved)?.accountId ?? accounts[0]?.accountId ?? null;
+    if (id !== saved) {
+      if (id) this.store.kvSet("active_account", id);
+      else this.store.kvDel("active_account");
+    }
+    return id;
+  }
+
+  setActive(id: string) {
+    if (!this.accounts().some((a) => a.accountId === id)) throw new AuthError("Unknown account");
+    this.store.kvSet("active_account", id);
+  }
+
+  account(id = this.activeId()): string | null {
+    return this.accounts().find((a) => a.accountId === id)?.email ?? null;
   }
 
   status(): AuthStatus {
-    const acc = this.google();
-    return { configured: this.client() !== null, signedIn: acc !== null, account: acc?.email ?? null };
+    const activeAccountId = this.activeId();
+    const accounts = this.accounts().map((a) => ({
+      id: a.accountId,
+      email: a.email,
+      name: a.name,
+      image: a.image,
+      unread: 0,
+    }));
+    return {
+      configured: this.client() !== null,
+      signedIn: accounts.length > 0,
+      account: this.account(activeAccountId),
+      accounts,
+      activeAccountId,
+    };
   }
 
-  onSignedIn(fn: () => void) {
+  onSignedIn(fn: (id: string) => void) {
     this.listeners.add(fn);
   }
 
-  private afterSignIn() {
-    const acc = this.google();
-    if (!acc) return;
-    // Single mailbox: switching Google accounts drops the previous one and its cache.
-    const previous = this.store.kvGet("synced_account");
-    if (previous && previous.toLowerCase() !== acc.email.toLowerCase()) this.store.clearMailbox();
-    this.store.kvSet("synced_account", acc.email);
-    this.access = null;
-    for (const fn of this.listeners) fn();
+  private afterSignIn(id: string) {
+    if (!this.account(id)) return;
+    this.activeId();
+    this.access.delete(id);
+    for (const fn of this.listeners) fn(id);
   }
 
   /** URL the system browser opens to begin Google sign-in. One-time, short-lived. */
@@ -127,7 +151,8 @@ export class Auth {
     if (url.pathname === `${AUTH_BASE_PATH}/done`) {
       const error = url.searchParams.get("error");
       if (error) return page("Sign-in failed", `Google sign-in did not complete (${error}). Try again from Mailfast.`);
-      const acc = this.store.googleAccount();
+      const session = await this.instance.api.getSession({ headers: req.headers });
+      const acc = this.store.googleAccounts().find((a) => a.userId === session?.user.id);
       if (acc && !hasGmailScope(acc.scope)) {
         return page("Gmail access needed", "Please sign in again and allow Mailfast to read and organise your Gmail.");
       }
@@ -137,39 +162,46 @@ export class Auth {
   }
 
   /** Valid Gmail access token. Better Auth refreshes and re-encrypts it in the DB. Single-flight. */
-  async token(): Promise<string> {
-    if (this.access && this.access.expires - 60_000 > Date.now()) return this.access.token;
-    this.refreshing ??= (async () => {
-      const acc = this.google();
-      if (!acc) throw new AuthError("Not signed in");
-      try {
-        const { token, expiresAt } = await googleAccessToken(this.instance, acc);
-        this.access = { token, expires: expiresAt || Date.now() + 50 * 60_000 };
-        return token;
-      } catch (e) {
-        throw new AuthError(`Could not refresh Google access: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    })().finally(() => {
-      this.refreshing = null;
-    });
-    return this.refreshing;
-  }
-
-  invalidate() {
-    this.access = null;
-  }
-
-  async signOut() {
-    // Revoking the access token revokes the whole grant (including the refresh token).
-    const token = this.google() ? await this.token().catch(() => null) : null;
-    if (token) {
-      await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, { method: "POST" }).catch(
-        () => {},
-      );
+  async token(id = this.activeId()): Promise<string> {
+    if (!id) throw new AuthError("Not signed in");
+    const cached = this.access.get(id);
+    if (cached && cached.expires - 60_000 > Date.now()) return cached.token;
+    let refreshing = this.refreshing.get(id);
+    if (!refreshing) {
+      refreshing = (async () => {
+        const acc = this.accounts().find((a) => a.accountId === id);
+        if (!acc) throw new AuthError("Not signed in");
+        try {
+          const { token, expiresAt } = await googleAccessToken(this.instance, acc);
+          if (this.account(id)) this.access.set(id, { token, expires: expiresAt || Date.now() + 50 * 60_000 });
+          return token;
+        } catch (e) {
+          throw new AuthError(`Could not refresh Google access: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      })().finally(() => this.refreshing.delete(id));
+      this.refreshing.set(id, refreshing);
     }
-    this.access = null;
-    this.store.clearAuth();
-    this.store.clearMailbox();
+    return refreshing;
+  }
+
+  invalidate(id = this.activeId()) {
+    if (id) this.access.delete(id);
+  }
+
+  async signOut(id?: string) {
+    const ids = id ? [id] : this.accounts().map((a) => a.accountId);
+    for (const accountId of ids) {
+      const token = await this.token(accountId).catch(() => null);
+      if (token)
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
+          method: "POST",
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => {});
+      this.access.delete(accountId);
+      this.store.deleteGoogleAccount(accountId);
+    }
+    if (!id) this.store.clearAuth();
+    this.activeId();
   }
 }
 

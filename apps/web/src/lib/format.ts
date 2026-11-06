@@ -1,4 +1,4 @@
-import type { Participant } from "@mailfast/shared";
+import type { Participant, ThreadDateRange } from "@mailfast/shared";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -44,11 +44,47 @@ const SYSTEM_NAMES: Record<string, string> = {
   CATEGORY_FORUMS: "Forums",
 };
 
-export const SIDEBAR_ORDER = ["INBOX", "STARRED", "IMPORTANT", "SENT", "DRAFT", "ALL", "SPAM", "TRASH"];
+export const SCOPES = ["INBOX", "ALL", "STARRED", "IMPORTANT"];
+export const SIDEBAR_ORDER = ["INBOX", "SENT", "DRAFT", "SPAM", "TRASH"];
 export const HIDDEN_LABELS = new Set(["UNREAD", "CHAT", "YELLOW_STAR"]);
 
 export function labelName(id: string, fallback?: string): string {
   return SYSTEM_NAMES[id] ?? fallback ?? id;
+}
+
+export type DateRange = { from?: string; to?: string };
+
+/** URL dates are inclusive local calendar dates, never UTC midnights. */
+export function localDate(value: string): Date {
+  const [year = 0, month = 0, day = 0] = value.split("-").map(Number);
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+export function dateParam(date: Date): string {
+  return `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function validateDateRange(search: Record<string, unknown>): DateRange {
+  const valid = (value: unknown) =>
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && dateParam(localDate(value)) === value
+      ? value
+      : undefined;
+  const today = dateParam(new Date());
+  const parsedFrom = valid(search.from);
+  const parsedTo = valid(search.to);
+  const from = parsedFrom && parsedFrom <= today ? parsedFrom : undefined;
+  const to = parsedTo && parsedTo > today ? today : parsedTo;
+  return from && to && from > to ? { from: to, to: from } : { from, to };
+}
+
+/** Inclusive URL calendar days become [local midnight, next local midnight). */
+export function threadDateRange({ from, to }: DateRange): ThreadDateRange {
+  const end = to ? localDate(to) : undefined;
+  end?.setDate(end.getDate() + 1);
+  return { after: from ? localDate(from).getTime() : undefined, before: end?.getTime() };
 }
 
 /** Remove invisible marketing padding before displaying mail previews. */
@@ -77,4 +113,32 @@ export function dateGroup(ms: number, now = new Date()) {
     label: monthYear.format(date),
     collapsed: date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth(),
   };
+}
+
+/** Splits a raw To/Cc header ("Ann <a@x.com>, \"Doe, Bob\" <b@x.com>, c@x.com") into addresses. */
+export function parseAddresses(header: string): { name: string; email: string }[] {
+  const parts: string[] = [];
+  let current = "";
+  let quoted = false;
+  let angle = false;
+  for (const char of header) {
+    if (char === '"') quoted = !quoted;
+    else if (char === "<") angle = true;
+    else if (char === ">") angle = false;
+    if (char === "," && !quoted && !angle) {
+      parts.push(current);
+      current = "";
+    } else current += char;
+  }
+  parts.push(current);
+  return parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const match = /^(.*?)\s*<([^>]+)>$/.exec(part);
+      if (!match) return { name: "", email: part };
+      const name = (match[1] ?? "").trim().replace(/^"|"$/g, "");
+      // Senders sometimes leave template gaps such as "Arafatulla undefined".
+      return { name: name.replace(/\s+(undefined|null)$/i, ""), email: (match[2] ?? "").trim() };
+    });
 }

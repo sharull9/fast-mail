@@ -2,7 +2,7 @@ import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { timingSafeEqual } from "node:crypto";
-import { openMailStore } from "@mailfast/db";
+import { openAppStore } from "@mailfast/db";
 import { env } from "@mailfast/env/server";
 import {
   AUTH_HEADER,
@@ -15,10 +15,10 @@ import {
 } from "@mailfast/shared";
 import { Auth, AuthError } from "@/auth.ts";
 import { Events } from "@/events.ts";
-import { Gmail } from "@/gmail.ts";
+import { Accounts } from "@/accounts.ts";
 import { PairingGrants, SessionStore } from "@/pairing.ts";
 import { acquireServerOwnership } from "@/server-ownership.ts";
-import { SyncEngine } from "@/sync.ts";
+import { listThreadsResponse } from "@/threads.ts";
 
 /**
  * Local HTTP API, launched by Electron as a sidecar (videorc/opencode style):
@@ -48,11 +48,11 @@ let trustedHosts = new Set<string>();
 let descriptor!: ServerDescriptor;
 let pairBaseOrigin = "";
 
-const store = openMailStore({ path: join(dataDir, "mail.sqlite"), migrationsFolder: env.MAILFAST_MIGRATIONS_DIR });
+const appStore = openAppStore({ path: join(dataDir, "mail.sqlite"), migrationsFolder: env.MAILFAST_MIGRATIONS_DIR });
 const events = new Events();
 // Better Auth needs the final origin (for the OAuth redirect URI), so these are created once the port is bound.
 let auth!: Auth;
-let sync!: SyncEngine;
+let accounts!: Accounts;
 
 const ACTIONS = new Set<ThreadAction["kind"]>([
   "archive",
@@ -207,7 +207,7 @@ try {
 
       try {
         // ---- auth
-        if (path === "/api/auth/status") return json(auth.status());
+        if (path === "/api/auth/status") return json(accounts.status());
         if (path === "/api/auth/config" && req.method === "POST") {
           const b = await body<{ clientId?: string; clientSecret?: string }>(req);
           if (!b.clientId?.endsWith(".apps.googleusercontent.com") || !b.clientSecret) {
@@ -219,19 +219,34 @@ try {
             );
           }
           auth.saveClient({ clientId: b.clientId, clientSecret: b.clientSecret });
-          return json(auth.status());
+          return json(accounts.status());
         }
         if (path === "/api/auth/login" && req.method === "POST") return json({ url: auth.startLogin() });
-        if (path === "/api/auth/logout" && req.method === "POST") {
-          sync.stop();
-          await auth.signOut();
-          events.send({ type: "status", status: sync.status() });
-          events.labelsChanged();
-          return json(auth.status());
+        if ((path === "/api/auth/logout" || path === "/api/logout") && req.method === "POST") {
+          return json(await accounts.logout());
         }
+        if (path === "/api/accounts/active" && req.method === "POST") {
+          const b = await body<{ id?: unknown }>(req);
+          if (typeof b.id !== "string") return json({ error: "Account ID required" }, 400);
+          auth.setActive(b.id);
+          return json(accounts.status());
+        }
+        const logoutMatch = path.match(/^\/api\/accounts\/([\w-]+)\/logout$/);
+        if (logoutMatch && req.method === "POST") return json(await accounts.logout(logoutMatch[1]!));
 
         // ---- pairing (existing auth only: Electron header or a paired browser)
         if (path === "/api/pairing-grants" && req.method === "POST") return json(issueGrant());
+
+        // All subscribers receive account-tagged events, including background unread changes.
+        if (path === "/api/events") {
+          // Fetch streaming supports the account header, unlike native EventSource.
+          if (auth.activeId()) accounts.resolve(req);
+          srv.timeout(req, 0);
+          return events.stream();
+        }
+        if (path === "/api/sync" && req.method === "POST" && !auth.activeId() && !req.headers.has("x-mailfast-account"))
+          return json({ ok: true });
+        const { store, sync } = accounts.resolve(req);
 
         // ---- sync
         if (path === "/api/status") return json(sync.status());
@@ -239,20 +254,11 @@ try {
           sync.wake();
           return json({ ok: true });
         }
-        if (path === "/api/events") {
-          srv.timeout(req, 0); // long-lived SSE
-          return events.stream();
-        }
 
         // ---- reads (always local)
         if (path === "/api/labels") return json(store.labels());
         if (path === "/api/threads" && req.method === "GET") {
-          const label = url.searchParams.get("label") ?? "INBOX";
-          const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 1000);
-          const before = Number(url.searchParams.get("before") ?? Number.MAX_SAFE_INTEGER);
-          void sync.ensureLabel(label);
-          const threads = store.listThreads(label, before, limit);
-          return json({ threads, hasMore: threads.length === limit } satisfies ListThreadsResponse);
+          return listThreadsResponse(url, { store, sync });
         }
         if (path === "/api/search") {
           const q = url.searchParams.get("q") ?? "";
@@ -344,8 +350,8 @@ try {
   console.warn("[server] could not publish runtime record:", e instanceof Error ? e.message : e);
 }
 
-auth = new Auth(store, origin, Auth.secretFor(store, env.MAILFAST_SECRET_KEY));
-sync = new SyncEngine(store, new Gmail(auth), auth, events);
+auth = new Auth(appStore, origin, Auth.secretFor(appStore, env.MAILFAST_SECRET_KEY));
+accounts = new Accounts(auth, events, dataDir, env.MAILFAST_MIGRATIONS_DIR);
 
 async function serveStatic(path: string): Promise<Response> {
   if (!staticDir) return new Response("Not found", { status: 404 });
@@ -381,12 +387,13 @@ if (parentPid > 0) {
   }, 2000);
 }
 process.on("SIGTERM", () => {
-  sync.stop();
-  store.close();
-  process.exit(0);
+  void accounts.close().finally(() => {
+    appStore.close();
+    process.exit(0);
+  });
 });
 
-sync.start();
+accounts.refresh();
 console.log(`READY ${JSON.stringify({ port: server.port, pid: process.pid, instanceId, origin })}`);
 if (mode === "standalone") {
   // First browser pairing for a fresh standalone server: the launcher turns

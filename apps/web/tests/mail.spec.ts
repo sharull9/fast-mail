@@ -199,6 +199,7 @@ test("mocked auth status resolves before the SSE connection starts", async ({ pa
   await page.goto("/mail/INBOX");
   releaseAuth();
   await expect(page.getByRole("tablist", { name: "Inbox categories" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^Inbox/ })).toHaveAttribute("aria-checked", "true");
   await expect.poll(() => eventConnections.length).toBeGreaterThan(0);
   expect(connectionOrder.indexOf("connection")).toBeLessThan(connectionOrder.indexOf("auth-request"));
   expect(connectionOrder.indexOf("auth-resolved")).toBeLessThan(connectionOrder.indexOf("events"));
@@ -431,7 +432,8 @@ test("selection shortcuts clear selection before closing the pane and reset on n
   await expect(page).toHaveURL(/\/mail\/INBOX$/);
   await page.keyboard.press("Control+a");
   await expect(page.getByText("3 selected", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Social", exact: true }).click();
+  await expect(page.getByRole("tablist", { name: "Inbox categories" })).toHaveCount(0);
+  await page.getByRole("radio", { name: /^Starred/ }).click();
   await expect(page.getByText("3 selected", { exact: true })).toHaveCount(0);
 });
 
@@ -486,8 +488,10 @@ test("previews clean invisible padding and search highlights matching terms", as
   await expect(page.locator('[data-thread-id="primary"] .snippet')).toHaveText("Your invoice is ready");
   await page.locator('[data-thread-id="primary"]').click();
   await expect(page.locator(".pane section")).toContainText("Your invoice is ready");
-  await expect(page.locator(".pane section")).toContainText("To: me@example.com");
-  await expect(page.locator(".pane section")).toContainText("Cc: team@example.com");
+  // The header summarises recipients; the full addresses live in the expandable details card.
+  await page.locator(".pane section").getByRole("button", { name: /^to / }).click();
+  await expect(page.locator(".pane section dl")).toContainText("me@example.com");
+  await expect(page.locator(".pane section dl")).toContainText("team@example.com");
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox").fill("@user:alice invoice");
   const result = page.getByRole("option", { name: /Invoice for November/ });

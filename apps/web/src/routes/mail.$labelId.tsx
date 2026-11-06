@@ -1,18 +1,43 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
-import { Outlet, createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
+import { Outlet, createFileRoute, retainSearchParams, useNavigate, useParams } from "@tanstack/react-router";
 
 import { INBOX_TABS, inboxCategoryLabel, isInboxCategory } from "@mailfast/shared";
 
 import { useLiveQuery } from "@tanstack/react-db";
 
+import { useQuery } from "@tanstack/react-query";
+
 import { ThreadList } from "@/components/thread-list";
 
-import { connectionQuery, loadMore, queryClient, threadsCollection, labelsCollection } from "@/lib/data";
+import { ScopeFilter } from "@/components/scope-filter";
 
-import { labelName } from "@/lib/format";
+import { DateRangeFilter } from "@/components/date-range-filter";
+
+import { Button } from "@/components/ui/button";
+
+import {
+  connectionQuery,
+  loadMore,
+  queryClient,
+  threadsCollection,
+  threadTotalQuery,
+  labelsCollection,
+} from "@/lib/data";
+
+import { threadDateRange, labelName, SCOPES, validateDateRange } from "@/lib/format";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Info, Inbox, Layers, Users, type LucideIcon } from "lucide-react";
+
+/** Icons for the inbox category tabs (Gmail's own metaphors for Primary / Social / Updates). */
+const TAB_ICONS: Record<string, LucideIcon> = {
+  INBOX: Layers,
+  INBOX_PRIMARY: Inbox,
+  INBOX_SOCIAL: Users,
+  INBOX_UPDATES: Info,
+};
 
 import { EmptyPreview } from "@/components/empty-preview";
 
@@ -23,12 +48,18 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/mail/$labelId")({
+  validateSearch: validateDateRange,
+
+  search: { middlewares: [retainSearchParams(["from", "to"])] },
+
   // Runs on hover too (defaultPreload: "intent"), so the mailbox is synced before the click.
 
-  loader: async ({ params }) => {
+  loaderDeps: ({ search }) => search,
+
+  loader: async ({ params, deps }) => {
     const connection = await queryClient.ensureQueryData(connectionQuery).catch(() => undefined);
 
-    if (connection?.paired) await threadsCollection(params.labelId).preload();
+    if (connection?.paired) await threadsCollection(params.labelId, threadDateRange(deps)).preload();
   },
 
   component: Mailbox,
@@ -37,13 +68,21 @@ export const Route = createFileRoute("/mail/$labelId")({
 function Mailbox() {
   const { labelId } = Route.useParams();
 
+  const range = Route.useSearch();
+
+  const hasRange = !!(range.from || range.to);
+
+  const inbox = labelId === "INBOX" || isInboxCategory(labelId) || labelId.startsWith("CATEGORY_");
+
   const threadId = useParams({ strict: false }).threadId;
 
   const navigate = useNavigate();
 
   const isMobile = useIsMobile();
 
-  const collection = threadsCollection(labelId);
+  const bounds = useMemo(() => threadDateRange(range), [range.from, range.to]);
+
+  const collection = threadsCollection(labelId, bounds);
 
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
 
@@ -57,82 +96,112 @@ function Mailbox() {
 
   const open = useCallback(
     (id: string) => void navigate({ to: "/mail/$labelId/$threadId", params: { labelId, threadId: id }, replace: true }),
-
     [navigate, labelId],
   );
 
   const close = useCallback(() => void navigate({ to: "/mail/$labelId", params: { labelId } }), [navigate, labelId]);
 
-  const more = useCallback(() => void loadMore(labelId), [labelId]);
+  const more = useCallback(() => void loadMore(labelId, bounds), [labelId, bounds]);
+
+  const { data: rangeTotal } = useQuery(threadTotalQuery(labelId, bounds));
+
+  const total = hasRange ? (rangeTotal ?? 0) : label?.total;
+
+  const changeRange = (next: typeof range) =>
+    void navigate({ from: Route.fullPath, search: (previous) => ({ ...previous, from: next.from, to: next.to }) });
+
+  const categories = inbox ? (
+    <Tabs
+      value={INBOX_TABS.find((tab) => categoryId(tab.id) === labelId)?.id ?? labelId}
+      onValueChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
+      className="inbox-tabs h-8 justify-center gap-0"
+    >
+      <TabsList aria-label="Inbox categories">
+        {INBOX_TABS.map((tab) => {
+          const TabIcon = TAB_ICONS[tab.id] ?? Inbox;
+          const unread = labels.find((l) => l.id === categoryId(tab.id))?.unread ?? 0;
+          // Sized by the list panel (container query on .list-col), not the window: below 30rem the
+          // tabs collapse to icons, the count becomes a dot, and the name moves into the tooltip.
+          return (
+            // The tooltip wraps the tab's content, not the tab: TooltipTrigger would overwrite the tab's
+            // data-state="active" (it sets its own data-state), which is what styles the selected tab.
+            <TabsTrigger key={tab.id} value={tab.id} aria-label={tab.name} className="relative @max-[30rem]:px-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1.5">
+                    <TabIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                    <span className="@max-[30rem]:hidden">{tab.name}</span>
+                    {unread > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium text-muted-foreground tabular-nums group-data-[state=active]/tab:bg-primary/20 group-data-[state=active]/tab:text-primary @max-[30rem]:hidden"
+                      >
+                        {unread}
+                      </span>
+                    )}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{unread > 0 ? `${tab.name} · ${unread} unread` : tab.name}</TooltipContent>
+              </Tooltip>
+              {unread > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1 right-1 hidden size-1.5 rounded-full bg-primary @max-[30rem]:block"
+                />
+              )}
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
+    </Tabs>
+  ) : undefined;
 
   const list = (
     <section className="list-col @container h-full">
       <header className="list-head">
-        {labelId === "INBOX" || isInboxCategory(labelId) ? (
-          <Tabs
-            value={labelId}
-
-            onValueChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
-
-            className="inbox-tabs h-8 justify-center gap-0"
-          >
-            <TabsList aria-label="Inbox categories">
-              {INBOX_TABS.map((tab) => (
-                <TabsTrigger key={tab.id} value={tab.id}>
-                  {tab.name}
-
-                  {(labels.find((l) => l.id === categoryId(tab.id))?.unread ?? 0) > 0 && (
-                    <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium text-muted-foreground tabular-nums group-data-[state=active]/tab:bg-primary/20 group-data-[state=active]/tab:text-primary">
-                      {labels.find((l) => l.id === categoryId(tab.id))?.unread}
-                    </span>
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+        {inbox || SCOPES.includes(labelId) ? (
+          <ScopeFilter
+            labelId={labelId}
+            labels={labels}
+            onChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
+          />
         ) : (
           <span className="min-w-0 truncate text-sm font-semibold">{labelName(labelId, label?.name)}</span>
         )}
 
-        {/* Next to the category tabs (~300px) the counts only fit in a wider list panel. */}
-        <span
-          className={
-            labelId === "INBOX" || isInboxCategory(labelId)
-              ? "ml-auto hidden max-w-52 shrink-0 truncate text-xs text-muted-foreground @min-[560px]:block"
-              : "ml-auto hidden max-w-52 shrink-0 truncate text-xs text-muted-foreground @min-[380px]:block"
-          }
-        >
-          {Math.max(threads.length, label?.total ?? 0).toLocaleString()} conversations · {label?.unread ?? 0} unread
-        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <DateRangeFilter range={range} onChange={changeRange} />
+          <span className="hidden max-w-52 truncate text-xs text-muted-foreground @min-[820px]:block">
+            {Math.max(threads.length, total ?? 0).toLocaleString()} conversations · {label?.unread ?? 0} unread
+          </span>
+        </div>
       </header>
 
       {isLoading ? (
         <div className="loading-list" aria-label="Loading mail">
           <Skeleton className="h-12 w-full" />
-
           <Skeleton className="h-12 w-full" />
-
           <Skeleton className="h-12 w-full" />
         </div>
       ) : (
         <ThreadList
-          key={labelId}
-
+          key={`${labelId}:${bounds.after}:${bounds.before}`}
           labelId={labelId}
-
-          total={label?.total}
-
+          total={total}
           threads={threads}
-
+          toolbarStart={categories}
+          emptyAction={
+            hasRange ? (
+              <Button variant="outline" size="sm" onClick={() => changeRange({})}>
+                Clear date filter
+              </Button>
+            ) : undefined
+          }
           selectedId={threadId}
-
           onOpen={open}
-
           onClose={close}
-
           onEndReached={more}
-
-          empty="Nothing here."
+          empty={hasRange ? "No conversations in this date range" : "Nothing here."}
         />
       )}
     </section>

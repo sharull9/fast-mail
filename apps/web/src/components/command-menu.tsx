@@ -5,10 +5,11 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { INBOX_TABS, type ThreadAction } from "@mailfast/shared";
 import { authQuery, labelsCollection, queryClient, searchQuery } from "@/lib/data";
 import { api, openExternal } from "@/lib/api";
-import { cleanSnippet, listDate, labelName, SIDEBAR_ORDER, sendersLabel } from "@/lib/format";
+import { cleanSnippet, listDate, labelName, SCOPES, SIDEBAR_ORDER, sendersLabel } from "@/lib/format";
 import { act } from "@/components/thread-list";
 import { Badge } from "@/components/ui/badge";
 import { MailAvatar } from "@/components/mail-avatar";
+import { cn } from "@/lib/utils";
 import { Icon } from "@/components/icon";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -40,6 +41,8 @@ type MenuCommand = {
   token: string;
   icon: string;
   shortcut?: string;
+  /** Rendered in the destructive colour (delete, sign out). */
+  destructive?: boolean;
   run: () => void | Promise<void>;
   disabled: boolean;
 };
@@ -88,7 +91,7 @@ export function CommandMenu({
   }, [value]);
   const goLabel = (id: string) => void navigate({ to: "/mail/$labelId", params: { labelId: id } });
   const commands: MenuCommand[] = [
-    ...SIDEBAR_ORDER.map((id) => ({
+    ...[...SCOPES, ...SIDEBAR_ORDER.filter((id) => !SCOPES.includes(id))].map((id) => ({
       id: `label:${id.toLowerCase()}`,
       name: labelName(id),
       token: id.toLowerCase(),
@@ -166,6 +169,7 @@ export function CommandMenu({
       name: "Sign out",
       token: "signout",
       icon: "command",
+      destructive: true,
       disabled: false,
       run: async () => {
         await api.logout();
@@ -179,6 +183,7 @@ export function CommandMenu({
       token: action.kind,
       shortcut,
       icon: action.kind === "trash" ? "TRASH" : action.kind === "archive" ? "archive" : "command",
+      destructive: action.kind === "trash",
       run: () => {
         if (selectedId) act([selectedId], action);
       },
@@ -328,7 +333,12 @@ export function CommandMenu({
                       key={item.id}
                       value={item.id}
                       disabled={item.disabled}
-                      className={thread ? "h-[52px]" : undefined}
+                      className={cn(
+                        thread && "h-[52px]",
+                        "destructive" in item &&
+                          item.destructive &&
+                          "text-destructive data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive [&_svg]:text-destructive",
+                      )}
                       onSelect={() => void execute(item.id)}
                     >
                       {thread ? (

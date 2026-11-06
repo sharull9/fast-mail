@@ -141,3 +141,17 @@ test("an unmatched query shows the query in the empty state", async ({ page }) =
   await expect(page.getByText("No results for “missing-conversation”", { exact: true })).toBeVisible();
   await expect(page.getByRole("dialog").locator("footer")).toContainText("0 results");
 });
+
+for (const [token, labelId] of [
+  ["starred", "STARRED"],
+  ["important", "IMPORTANT"],
+  ["all", "ALL"],
+]) {
+  test(`@${token} still opens its scope`, async ({ page }) => {
+    await page.getByRole("combobox").fill(`@${token}`);
+    await page.getByRole("option").first().click();
+    await expect(page).toHaveURL(new RegExp(`/mail/${labelId}$`));
+    await expect(page.getByRole("radio", { checked: true })).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Inbox categories" })).toHaveCount(0);
+  });
+}

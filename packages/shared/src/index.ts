@@ -120,7 +120,17 @@ export interface SyncStatus {
   error: string | null;
 }
 
+export interface MailAccount {
+  id: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+  unread: number;
+}
+
 export interface AuthStatus {
+  accounts: MailAccount[];
+  activeAccountId: string | null;
   configured: boolean;
   signedIn: boolean;
   account: string | null;
@@ -172,13 +182,29 @@ export function applyDelta(labelIds: string[], delta: { add: string[]; remove: s
 }
 
 /** Server-sent events pushed on /api/events. */
-export type ServerEvent =
+export type ServerEventData =
   | { type: "status"; status: SyncStatus }
   | { type: "threads-changed"; labelIds: string[] }
   | { type: "labels-changed" }
-  | { type: "thread-updated"; threadId: string };
+  | { type: "thread-updated"; threadId: string }
+  | { type: "accounts-changed" };
+
+export type ServerEvent = ServerEventData & { accountId: string };
+
+/** Epoch milliseconds: inclusive lower bound, exclusive upper bound. */
+export interface ThreadDateRange {
+  after?: number;
+  before?: number;
+}
+
+export interface ListThreadsParams extends ThreadDateRange {
+  label?: string;
+  limit?: number;
+}
 
 export interface ListThreadsResponse {
   threads: ThreadRow[];
   hasMore: boolean;
+  /** Number of cached threads in the requested range (before applying limit). */
+  total?: number;
 }

@@ -114,7 +114,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Gmail {
   readonly limiter = new Limiter(230, 250);
 
-  constructor(private readonly auth: Auth) {}
+  constructor(private readonly auth: Pick<Auth, "token" | "invalidate">) {}
 
   private async request<T>(
     path: string,
@@ -195,7 +195,7 @@ export class Gmail {
   }
 
   listMessageIds(
-    opts: { labelId?: string; pageToken?: string; maxResults: number; includeSpamTrash?: boolean },
+    opts: { labelId?: string; pageToken?: string; maxResults: number; includeSpamTrash?: boolean; q?: string },
     priority: Priority,
   ) {
     const p = new URLSearchParams({
@@ -204,6 +204,7 @@ export class Gmail {
     });
     if (opts.labelId) p.set("labelIds", opts.labelId);
     if (opts.pageToken) p.set("pageToken", opts.pageToken);
+    if (opts.q) p.set("q", opts.q);
     if (opts.includeSpamTrash) p.set("includeSpamTrash", "true");
     return this.request<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>("/messages", {
       query: p.toString(),

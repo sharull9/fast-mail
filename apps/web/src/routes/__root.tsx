@@ -7,10 +7,11 @@ import {
   Scripts,
   createRootRouteWithContext,
   useRouterState,
+  useNavigate,
 } from "@tanstack/react-router";
 import { QueryClientProvider, useQuery, type QueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
-import { api } from "@/lib/api";
+import { api, openExternal } from "@/lib/api";
 import {
   authQuery,
   connectEvents,
@@ -19,6 +20,8 @@ import {
   prefetchLabel,
   queryClient,
   statusQuery,
+  switchAccount,
+  signOutAccount,
 } from "@/lib/data";
 import { HIDDEN_LABELS, SIDEBAR_ORDER, labelName } from "@/lib/format";
 import { Setup } from "@/components/setup";
@@ -43,7 +46,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ChevronsUpDown, RefreshCw } from "lucide-react";
+import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw } from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { AppContextMenu } from "@/components/app-context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -55,7 +58,10 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import type { MailAccount } from "@mailfast/shared";
 import appCss from "@/styles.css?url";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -117,6 +123,7 @@ function AuthGate() {
         initialCode={incomingCode}
         onPaired={async () => {
           setIncomingCode("");
+          queryClient.removeQueries({ queryKey: ["auth"] });
           await queryClient.invalidateQueries({ queryKey: ["connection"] });
           const current = await queryClient.fetchQuery({ ...connectionQuery, staleTime: 0 });
           if (!current.paired) throw new Error("The browser session was not paired. Request a new code and try again.");
@@ -129,9 +136,15 @@ function AuthGate() {
 
 function PairedGate() {
   const auth = useQuery(authQuery);
+  const navigate = useNavigate();
+  useEffect(() => {
+    const onSwitch = () => void navigate({ to: "/mail/$labelId", params: { labelId: "INBOX" } });
+    window.addEventListener("mailfast:account-switched", onSwitch);
+    return () => window.removeEventListener("mailfast:account-switched", onSwitch);
+  }, [navigate]);
   useEffect(() => {
     if (auth.data?.configured && auth.data.signedIn) return connectEvents();
-  }, [auth.data?.configured, auth.data?.signedIn]);
+  }, [auth.data?.configured, auth.data?.signedIn, auth.data?.activeAccountId]);
 
   if (auth.isPending) return <div className="splash" />;
   if (auth.isError)
@@ -142,7 +155,7 @@ function PairedGate() {
       />
     );
   if (!auth.data.configured || !auth.data.signedIn) return <Setup status={auth.data} />;
-  return <Layout />;
+  return <Layout key={auth.data.activeAccountId} />;
 }
 
 function Layout() {
@@ -232,8 +245,44 @@ function AppContent() {
   );
 }
 
+function AccountAvatar({ account }: { account: MailAccount | undefined }) {
+  if (!account?.image) return <MailAvatar name={account?.name ?? ""} email={account?.email ?? ""} className="size-8" />;
+  return (
+    <Avatar className="size-8 shrink-0">
+      <AvatarImage src={account.image} alt="" />
+      <AvatarFallback>{(account.name || account.email).slice(0, 2).toUpperCase()}</AvatarFallback>
+    </Avatar>
+  );
+}
+
 function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrowser: () => void }) {
-  const account = useQuery(authQuery).data?.account ?? "";
+  const auth = useQuery(authQuery).data;
+  const accounts = auth?.accounts ?? [];
+  const active = accounts.find((a) => a.id === auth?.activeAccountId);
+  const account = active?.email ?? auth?.account ?? "";
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const perform = (operation: Promise<unknown>) => {
+    setAccountError(null);
+    void operation.catch((error: unknown) =>
+      setAccountError(error instanceof Error ? error.message : "Account action failed"),
+    );
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName)))
+        return;
+      if (!event.ctrlKey || event.altKey || event.metaKey || !/^[1-9]$/.test(event.key)) return;
+      const next = accounts[Number(event.key) - 1];
+      if (next) {
+        event.preventDefault();
+        perform(switchAccount(next.id));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [accounts]);
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
   const { state } = useSidebar();
   const system = SIDEBAR_ORDER.map((id) => labels.find((l) => l.id === id) ?? { id, name: labelName(id), unread: 0 });
@@ -250,17 +299,50 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
                 aria-label="Account menu"
                 className="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1.5 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
               >
-                <MailAvatar name="" email={account} className="size-8 group-data-[collapsible=icon]:size-7" />
+                <AccountAvatar account={active} />
                 <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                  <span className="block font-semibold text-foreground">Mailfast</span>
+                  <span className="block truncate font-semibold text-foreground">{active?.name || "Mailfast"}</span>
                   <span className="block truncate text-[11px] text-muted-foreground">{account}</span>
                 </span>
                 <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-60" align="start">
-              <DropdownMenuLabel className="truncate">{account}</DropdownMenuLabel>
+              <DropdownMenuLabel>Accounts</DropdownMenuLabel>
+              {accounts.map((item, index) => (
+                <DropdownMenuItem
+                  key={item.id}
+                  aria-label={`${item.email}${item.id === active?.id ? ", active" : ""}`}
+                  onSelect={() => perform(switchAccount(item.id))}
+                >
+                  <AccountAvatar account={item} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.name || item.email}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{item.email}</span>
+                  </span>
+                  {item.unread > 0 && (
+                    <span className="rounded bg-muted px-1.5 text-xs" aria-label={`${item.unread} unread`}>
+                      {item.unread}
+                    </span>
+                  )}
+                  {item.id === active?.id && <Check className="size-4" aria-label="Active account" />}
+                  {index < 9 && <DropdownMenuShortcut>Ctrl+{index + 1}</DropdownMenuShortcut>}
+                </DropdownMenuItem>
+              ))}
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() =>
+                  perform(
+                    api.login().then(({ url }) => {
+                      openExternal(url);
+                      setAdding(true);
+                    }),
+                  )
+                }
+              >
+                <UserPlus className="size-4" />
+                Add another account
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
                   void api.syncNow();
@@ -275,6 +357,19 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => {
+                  if (active) perform(signOutAccount(active.id));
+                }}
+              >
+                <LogOut />
+                {/* One line: long addresses truncate; the full address is in the title tooltip. */}
+                <span className="min-w-0 truncate" title={`Sign out of ${account}`}>
+                  Sign out of {account}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
                 onSelect={() => {
                   void api.logout().then(() => {
                     queryClient.clear();
@@ -282,7 +377,8 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
                   });
                 }}
               >
-                Sign out
+                <LogOut />
+                Sign out of all accounts
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -310,6 +406,16 @@ function Sidebar({ onSearch, onPairBrowser }: { onSearch: () => void; onPairBrow
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+      {accountError && (
+        <p role="alert" className="px-3 text-xs text-destructive">
+          {accountError}
+        </p>
+      )}
+      {adding && (
+        <p role="status" className="px-3 text-xs text-muted-foreground">
+          Finish signing in in your browser. Accounts refresh automatically.
+        </p>
+      )}
       <SidebarContent>
         {[
           { name: "Mail", labels: system.filter((l) => !["SPAM", "TRASH"].includes(l.id)) },

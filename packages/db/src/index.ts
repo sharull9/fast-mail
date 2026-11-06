@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
 import { fileURLToPath } from "node:url";
-import { and, asc, count, desc, eq, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import type { Label, MessageMeta, Participant, ThreadAction, ThreadRow } from "@mailfast/shared";
+import type { Label, MessageMeta, Participant, ThreadAction, ThreadDateRange, ThreadRow } from "@mailfast/shared";
 import { inboxCategoryLabel, isInboxCategory, NON_PRIMARY_CATEGORY_LABELS } from "@mailfast/shared";
 import * as schema from "./schema.ts";
 import { account, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
@@ -83,6 +83,27 @@ function toMessageMeta(r: MessageSelect): MessageMeta {
 /** Virtual label backing the "All Mail" view (Gmail has no label id for it). */
 export const ALL_MAIL = "ALL";
 
+/** Both the page and count begin with the (label_id, last_date) index. */
+function threadRangeWhere(labelId: string, { after, before }: ThreadDateRange) {
+  const excluded = sql.join(
+    NON_PRIMARY_CATEGORY_LABELS.map((l) => sql`${l}`),
+    sql`, `,
+  );
+  const category = !isInboxCategory(labelId)
+    ? undefined
+    : labelId === "INBOX_PRIMARY"
+      ? sql`NOT EXISTS (SELECT 1 FROM thread_labels c WHERE c.thread_id = ${threadLabels.threadId}
+          AND c.label_id IN (${excluded}))`
+      : sql`EXISTS (SELECT 1 FROM thread_labels c WHERE c.thread_id = ${threadLabels.threadId}
+          AND c.label_id = ${inboxCategoryLabel(labelId)})`;
+  return and(
+    eq(threadLabels.labelId, isInboxCategory(labelId) ? "INBOX" : labelId),
+    after === undefined ? undefined : gte(threadLabels.lastDate, after),
+    before === undefined ? undefined : lt(threadLabels.lastDate, before),
+    category,
+  );
+}
+
 export function openMailStore(opts: OpenOptions) {
   const sqlite = new Database(opts.path, { create: true, strict: true });
   sqlite.exec(`
@@ -125,7 +146,11 @@ export function openMailStore(opts: OpenOptions) {
       .from(threadLabels)
       .innerJoin(threads, eq(threads.id, threadLabels.threadId))
       .where(
-        and(eq(threadLabels.labelId, sql.placeholder("labelId")), lt(threadLabels.lastDate, sql.placeholder("before"))),
+        and(
+          eq(threadLabels.labelId, sql.placeholder("labelId")),
+          gte(threadLabels.lastDate, sql.placeholder("after")),
+          lt(threadLabels.lastDate, sql.placeholder("before")),
+        ),
       )
       .orderBy(desc(threadLabels.lastDate))
       .limit(sql.placeholder("limit"))
@@ -323,29 +348,22 @@ export function openMailStore(opts: OpenOptions) {
       return p.messagesOfThread.all({ threadId }).map(toMessageMeta);
     },
     /** Keyset page of a label, newest first. `before` is an exclusive lastDate cursor. */
-    listThreads(labelId: string, before: number, limit: number): ThreadRow[] {
+    listThreads(labelId: string, before: number, limit: number, after = -Number.MAX_SAFE_INTEGER): ThreadRow[] {
       if (isInboxCategory(labelId)) {
-        const excluded = sql.join(
-          NON_PRIMARY_CATEGORY_LABELS.map((l) => sql`${l}`),
-          sql`, `,
-        );
-        const category =
-          labelId === "INBOX_PRIMARY"
-            ? sql`NOT EXISTS (SELECT 1 FROM thread_labels c WHERE c.thread_id = ${threads.id}
-              AND c.label_id IN (${excluded}))`
-            : sql`EXISTS (SELECT 1 FROM thread_labels c WHERE c.thread_id = ${threads.id}
-              AND c.label_id = ${inboxCategoryLabel(labelId)})`;
         return db
           .select({ t: threads })
           .from(threadLabels)
           .innerJoin(threads, eq(threads.id, threadLabels.threadId))
-          .where(and(eq(threadLabels.labelId, "INBOX"), lt(threadLabels.lastDate, before), category))
+          .where(threadRangeWhere(labelId, { after, before }))
           .orderBy(desc(threadLabels.lastDate))
           .limit(limit)
           .all()
           .map((r) => toThreadRow(r.t));
       }
-      return p.threadPage.all({ labelId, before, limit }).map((r) => toThreadRow(r.t));
+      return p.threadPage.all({ labelId, after, before, limit }).map((r) => toThreadRow(r.t));
+    },
+    countThreads(labelId: string, range: ThreadDateRange = {}): number {
+      return db.select({ n: count() }).from(threadLabels).where(threadRangeWhere(labelId, range)).get()!.n;
     },
     searchThreads(text: string, limit: number): ThreadRow[] {
       const users: string[] = [];
@@ -423,17 +441,25 @@ export function openMailStore(opts: OpenOptions) {
     },
 
     // ---- auth (Better Auth tables) -----------------------------------------
-    /** The signed-in Google account (Mailfast syncs one mailbox at a time). */
-    googleAccount(): { userId: string; accountId: string; email: string; scope: string | null } | null {
-      const row = db
-        .select({ userId: account.userId, accountId: account.id, email: user.email, scope: account.scope })
+    googleAccounts() {
+      return db
+        .select({
+          userId: account.userId,
+          accountId: account.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          scope: account.scope,
+        })
         .from(account)
         .innerJoin(user, eq(user.id, account.userId))
         .where(and(eq(account.providerId, "google"), sql`${account.refreshToken} IS NOT NULL`))
-        .orderBy(desc(account.updatedAt))
-        .limit(1)
-        .get();
-      return row ?? null;
+        .orderBy(asc(account.createdAt), asc(account.id))
+        .all();
+    },
+    deleteGoogleAccount(id: string) {
+      const row = db.select().from(account).where(eq(account.id, id)).get();
+      if (row) db.delete(user).where(eq(user.id, row.userId)).run();
     },
     /** Removes users and (via cascade) their sessions and OAuth accounts. */
     clearAuth() {
@@ -455,9 +481,26 @@ export function openMailStore(opts: OpenOptions) {
     },
 
     close() {
-      sqlite.close();
+      sqlite.close(true);
     },
   };
 }
 
 export type MailStore = ReturnType<typeof openMailStore>;
+
+/** App/auth database retains the legacy schema, but never reads its mailbox cache. */
+export function openAppStore(opts: OpenOptions) {
+  const store = openMailStore(opts);
+  return {
+    db: store.db,
+    sqlite: store.sqlite,
+    kvGet: store.kvGet.bind(store),
+    kvSet: store.kvSet.bind(store),
+    kvDel: store.kvDel.bind(store),
+    googleAccounts: store.googleAccounts.bind(store),
+    deleteGoogleAccount: store.deleteGoogleAccount.bind(store),
+    clearAuth: store.clearAuth.bind(store),
+    close: store.close.bind(store),
+  };
+}
+export type AppStore = ReturnType<typeof openAppStore>;

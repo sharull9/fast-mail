@@ -188,14 +188,14 @@ for (const key of ["j", "ArrowDown"]) {
   });
 }
 
-test("hover and keyboard actions are centered with matching backgrounds in both row layouts", async ({ page }) => {
+test("hover and keyboard actions notch into the bottom-right corner without hiding dates", async ({ page }) => {
   const row = page.locator('[data-thread-id="today"]');
   const actions = row.locator(".row-actions");
   for (const width of [600, 500]) {
     await page.locator(".list").evaluate((element, width) => {
       element.style.width = `${width}px`;
     }, width);
-    await expect(row).toHaveCSS("height", width === 600 ? "60px" : "76px");
+    await expect(row).toHaveCSS("height", width === 600 ? "72px" : "92px");
     for (const state of ["default", "selected", "opened"]) {
       if (state === "selected") await row.getByRole("checkbox").click();
       if (state === "opened") {
@@ -204,19 +204,23 @@ test("hover and keyboard actions are centered with matching backgrounds in both 
       }
       await row.hover();
       await expect(actions).toBeVisible();
-      await expect(row.locator(".date")).toBeHidden();
+      await expect(row.locator(".date")).toBeVisible();
       const rowBox = await row.boundingBox();
       const actionsBox = await actions.boundingBox();
       if (!rowBox || !actionsBox) throw new Error("Missing row or actions box");
-      expect(Math.abs(actionsBox.y + actionsBox.height / 2 - (rowBox.y + rowBox.height / 2))).toBeLessThanOrEqual(2);
+      expect(Math.abs(actionsBox.y + actionsBox.height - rowBox.y - rowBox.height)).toBeLessThanOrEqual(2);
+      expect(Math.abs(actionsBox.x + actionsBox.width - rowBox.x - rowBox.width)).toBeLessThanOrEqual(2);
       expect(await actions.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
-        await row.evaluate((element) => getComputedStyle(element).backgroundColor),
+        await page.locator("body").evaluate((element) => getComputedStyle(element).backgroundColor),
       );
-      expect(await actions.evaluate((element) => getComputedStyle(element, "::before").width)).toBe("24px");
+      expect(await actions.evaluate((element) => getComputedStyle(element, "::before").width)).toBe("12px");
       await page.mouse.move(0, 0);
       await row.focus();
       await expect(actions).toBeVisible();
-      await expect(row.locator(".date")).toBeHidden();
+      await expect(row.locator(".date")).toBeVisible();
+      await actions.getByRole("button").first().focus();
+      await page.keyboard.press("Tab");
+      await expect(actions.getByRole("button").nth(1)).toBeFocused();
     }
     await page.keyboard.press("Escape");
   }
@@ -248,12 +252,12 @@ test("row layout follows the list width independently of the open thread", async
     element.style.width = "600px";
   });
   await expect(row).not.toHaveClass(/narrow/);
-  await expect(row).toHaveCSS("height", "60px");
+  await expect(row).toHaveCSS("height", "72px");
   await list.evaluate((element) => {
     element.style.width = "500px";
   });
   await expect(row).toHaveClass(/narrow/);
-  await expect(row).toHaveCSS("height", "76px");
+  await expect(row).toHaveCSS("height", "92px");
 });
 
 test("wide cards stack sender over subject and truncate long unread senders", async ({ page }) => {
@@ -261,7 +265,7 @@ test("wide cards stack sender over subject and truncate long unread senders", as
     element.style.width = "800px";
   });
   const row = page.locator('[data-thread-id="today"]');
-  await expect(row).toHaveCSS("height", "60px");
+  await expect(row).toHaveCSS("height", "72px");
   await expect(row.locator(".from")).toHaveText("Matt (2)");
   // Hierarchy: who/when on the first line, subject and snippet share the second line.
   const layout = await row.evaluate((element) => {
@@ -285,7 +289,7 @@ test("wide cards stack sender over subject and truncate long unread senders", as
   expect(rightInset).toBeCloseTo(13, 0);
 });
 
-test("important tags sit after the sender in both layouts and expose a tooltip and accessible name", async ({
+test("important icons sit in the right meta group in both layouts and expose a tooltip and accessible name", async ({
   page,
 }) => {
   const row = page.locator('[data-thread-id="yesterday"]');
@@ -293,18 +297,22 @@ test("important tags sit after the sender in both layouts and expose a tooltip a
     await page.locator(".list").evaluate((element, width) => {
       element.style.width = `${width}px`;
     }, width);
-    await expect(row).toHaveCSS("height", width === 800 ? "60px" : "76px");
+    await expect(row).toHaveCSS("height", width === 800 ? "72px" : "92px");
     const marker = row.getByRole("button", { name: "Marked important — click to unmark" });
     await expect(marker).toBeVisible();
-    await expect(marker).toHaveText("Important");
+
+    await expect(marker).toHaveText("");
     await expect(row).toHaveAccessibleName(/, important$/);
     await expect(row.locator(".row-unread-dot")).toBeVisible();
     // The tag sits in the head line, right after the sender, not in front of the subject.
-    await expect(row.locator(".row-head > .from + .row-tag-important")).toHaveCount(1);
+
+    await expect(row.locator(".row-head > .row-meta > .row-important:first-child")).toHaveCount(1);
     await marker.hover();
-    await expect(page.getByRole("tooltip")).toHaveText("Click to unmark as important");
+
+    await expect(page.getByRole("tooltip")).toHaveText("Important");
   }
-  await expect(page.locator('[data-thread-id="today"] .row-tag-important')).toHaveCount(0);
+
+  await expect(page.locator('[data-thread-id="today"] .row-important')).toHaveCount(0);
 });
 
 for (const activation of ["click", "Enter", "Space"]) {
@@ -328,7 +336,8 @@ test("Important label hides the redundant marker but the reading pane shows its 
   const row = page.locator('[data-thread-id="yesterday"]');
   await expect(row).toBeVisible();
   await expect(row).toHaveAccessibleName(/, important$/);
-  await expect(row.locator(".row-tag-important")).toHaveCount(0);
+
+  await expect(row.locator(".row-important")).toHaveCount(0);
   await row.locator(".subject").click();
   await expect(page.locator(".chips").getByText("Important", { exact: true })).toBeVisible();
   await expect(page.locator(".chips .lucide-circle-alert")).toHaveCSS("stroke", "rgb(232, 176, 75)");
