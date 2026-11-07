@@ -30,6 +30,7 @@ export interface PairedBrowser {
   lastSeenAt: number;
   origin: string | null;
   userAgent: string | null;
+  current?: boolean;
 }
 
 export const INBOX_TABS = [

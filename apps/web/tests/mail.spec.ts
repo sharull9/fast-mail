@@ -157,6 +157,19 @@ async function mockMail(
         actions.push(route.request().postDataJSON());
         body = { ok: true };
         break;
+      case "/api/browser-sessions":
+        body = [
+          {
+            id: "session-1",
+            createdAt: Date.now() - 60_000,
+            lastSeenAt: Date.now(),
+            origin: "http://localhost:5199",
+            userAgent:
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            current: true,
+          },
+        ];
+        break;
       case "/api/prefetch":
       case "/api/sync":
         body = { ok: true };
@@ -272,6 +285,56 @@ test("@pair issues a one-use grant and offers copy feedback", async ({ page }) =
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy code" }).click();
   await expect(page.getByRole("button", { name: "Code copied" })).toBeVisible();
+});
+
+test("pair browser dialog shows connected list in browser and allows only itself to disconnect", async ({ page }) => {
+  const { requests } = await mockMail(page);
+  await page.route("**/api/browser-sessions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: [
+        {
+          id: "session-current",
+          createdAt: Date.now() - 60_000,
+          lastSeenAt: Date.now(),
+          origin: "http://localhost:5199",
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          current: true,
+        },
+        {
+          id: "session-other",
+          createdAt: Date.now() - 120_000,
+          lastSeenAt: Date.now() - 60_000,
+          origin: "http://localhost:5199",
+          userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        },
+      ],
+    });
+  });
+
+  await page.goto("/mail/INBOX");
+  await page.getByRole("button", { name: "Search mail", exact: true }).click();
+  await page.getByRole("combobox").fill("@pair");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+
+  // Connected list is shown
+  await expect(page.getByText("Paired browsers")).toBeVisible();
+  await expect(page.getByText("Chrome on Windows")).toBeVisible();
+  await expect(page.getByText("Safari on macOS")).toBeVisible();
+  await expect(page.getByText("This browser", { exact: true })).toBeVisible();
+
+  // Only itself can be disconnected
+  const disconnectButtons = page.getByRole("button", { name: "Disconnect" });
+  await expect(disconnectButtons).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Revoke" })).toHaveCount(0);
+
+  // Disconnecting disconnects this browser
+  await disconnectButtons.click();
+  await expect(page.getByText("Pair this browser", { exact: true })).toBeVisible();
+  expect(requests).toContain("/api/session");
 });
 
 test("disconnect browser revokes only the browser session", async ({ page }) => {

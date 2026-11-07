@@ -14,7 +14,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClientProvider, useQuery, type QueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
-import { api, openExternal } from "@/lib/api";
+import { api, isDesktopApp, openExternal } from "@/lib/api";
 import {
   authQuery,
   connectEvents,
@@ -273,6 +273,7 @@ function Sidebar({
   const accounts = auth?.accounts ?? [];
   const active = accounts.find((a) => a.id === auth?.activeAccountId);
   const account = active?.email ?? auth?.account ?? "";
+  const desktop = isDesktopApp();
   const [accountError, setAccountError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const perform = (operation: Promise<unknown>) => {
@@ -365,6 +366,17 @@ function Sidebar({
                 <Icon name="external" />
                 Pair another browser…
               </DropdownMenuItem>
+              {!desktop && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => {
+                    void api.disconnectBrowser();
+                  }}
+                >
+                  <LogOut />
+                  Disconnect browser
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"

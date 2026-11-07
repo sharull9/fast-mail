@@ -235,13 +235,25 @@ test("Electron token can list and revoke paired browser sessions", async () => {
   const keepCookie = await pairBrowser(CUSTOM_UI_ORIGIN, { "user-agent": "Keep Test" });
 
   expect((await fetch(`${base}/api/browser-sessions`)).status).toBe(401);
-  expect(
-    (
-      await fetch(`${base}/api/browser-sessions`, {
-        headers: { cookie: revokeCookie, origin: UI_ORIGIN },
-      })
-    ).status,
-  ).toBe(401);
+
+  // Paired browser can list sessions and sees itself marked as current.
+  const browserListRes = await fetch(`${base}/api/browser-sessions`, {
+    headers: { cookie: revokeCookie, origin: UI_ORIGIN },
+  });
+  expect(browserListRes.status).toBe(200);
+  const browserSessionsList = (await browserListRes.json()) as PairedBrowser[];
+  expect(browserSessionsList.length).toBeGreaterThanOrEqual(2);
+  const ownSession = browserSessionsList.find((s) => s.userAgent === "Revocation Test")!;
+  const otherSession = browserSessionsList.find((s) => s.userAgent === "Keep Test")!;
+  expect(ownSession.current).toBe(true);
+  expect(otherSession.current).toBeUndefined();
+
+  // Paired browser cannot revoke another browser session.
+  const forbiddenDel = await fetch(`${base}/api/browser-sessions/${otherSession.id}`, {
+    method: "DELETE",
+    headers: { cookie: revokeCookie, origin: UI_ORIGIN },
+  });
+  expect(forbiddenDel.status).toBe(403);
 
   const list = await fetch(`${base}/api/browser-sessions`, { headers: { [AUTH_HEADER]: TOKEN } });
   expect(list.status).toBe(200);
@@ -273,6 +285,25 @@ test("Electron token can list and revoke paired browser sessions", async () => {
     (await fetch(`${base}/api/auth/status`, { headers: { cookie: keepCookie, "sec-fetch-site": "same-origin" } }))
       .status,
   ).toBe(200);
+});
+
+test("paired browser can disconnect itself via DELETE /api/browser-sessions/:id", async () => {
+  const cookie = await pairBrowser(UI_ORIGIN, { "user-agent": "Self Disconnect Test" });
+  const listRes = await fetch(`${base}/api/browser-sessions`, {
+    headers: { cookie, origin: UI_ORIGIN },
+  });
+  const list = (await listRes.json()) as PairedBrowser[];
+  const self = list.find((s) => s.userAgent === "Self Disconnect Test")!;
+  expect(self.current).toBe(true);
+
+  const del = await fetch(`${base}/api/browser-sessions/${self.id}`, {
+    method: "DELETE",
+    headers: { cookie, origin: UI_ORIGIN },
+  });
+  expect(del.status).toBe(200);
+  expect(
+    (await fetch(`${base}/api/auth/status`, { headers: { cookie, "sec-fetch-site": "same-origin" } })).status,
+  ).toBe(401);
 });
 
 test("browser cookie rejects cross-origin and ambiguous requests", async () => {

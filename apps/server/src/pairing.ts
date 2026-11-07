@@ -102,7 +102,12 @@ export class SessionStore {
     return true;
   }
 
-  list(): PairedBrowser[] {
+  findByToken(token: string): BrowserSessionRecord | null {
+    return this.sessions.get(hash(token)) ?? null;
+  }
+
+  list(currentToken?: string | null): PairedBrowser[] {
+    const currentHash = currentToken ? hash(currentToken) : null;
     return [...this.sessions.values()]
       .map((record) => ({
         id: record.id,
@@ -110,6 +115,7 @@ export class SessionStore {
         lastSeenAt: record.lastSeenAt,
         origin: record.origin,
         userAgent: record.userAgent,
+        ...(currentHash && record.tokenHash === currentHash ? { current: true } : {}),
       }))
       .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
   }

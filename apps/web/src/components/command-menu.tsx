@@ -40,6 +40,7 @@ type MenuCommand = {
   id: string;
   name: string;
   token: string;
+  keywords?: string[];
   icon: string;
   shortcut?: ShortcutId;
   /** Rendered in the destructive colour (delete, sign out). */
@@ -152,33 +153,35 @@ export function CommandMenu({
       id: "global:pair-browser",
       name: "Pair browser",
       token: "pair",
+      keywords: ["pair", "browser", "connect", "code", "grant"],
       icon: "external",
       run: onPairBrowser,
       disabled: false,
     },
-    ...(desktop
+    {
+      id: "global:manage-browsers",
+      name: desktop ? "Manage paired browsers" : "Paired browsers",
+      token: "browsers",
+      keywords: ["paired", "browsers", "connected", "sessions", "devices", "pair", "revoke"],
+      icon: "external",
+      disabled: false,
+      run: onPairBrowser,
+    },
+    ...(!desktop
       ? [
-          {
-            id: "global:manage-browsers",
-            name: "Manage paired browsers",
-            token: "browsers",
-            icon: "external",
-            disabled: false,
-            run: onPairBrowser,
-          },
-        ]
-      : [
           {
             id: "global:disconnect-browser",
             name: "Disconnect browser",
             token: "disconnect",
+            keywords: ["logout", "unpair", "session", "disconnect", "pair"],
             icon: "command",
             disabled: false,
             run: async () => {
               await api.disconnectBrowser();
             },
           },
-        ]),
+        ]
+      : []),
     {
       id: "global:gmail",
       name: "Open in Gmail",
@@ -219,7 +222,11 @@ export function CommandMenu({
   const needle = value.trim().replace(/^@/, "").toLowerCase();
   const matchingCommands = /^@user:/i.test(value.trim())
     ? []
-    : commands.filter((command) => !needle || `${command.token} ${command.name}`.toLowerCase().includes(needle));
+    : commands.filter(
+        (command) =>
+          !needle ||
+          `${command.token} ${command.name} ${(command.keywords ?? []).join(" ")}`.toLowerCase().includes(needle),
+      );
   const threads = !commandOnly && mailQuery === value.trim() ? (search.data?.threads.slice(0, 8) ?? []) : [];
   const items = [
     ...matchingCommands.map((command) => ({

@@ -249,16 +249,31 @@ try {
         return json({ error: "method not allowed" }, 405);
       }
 
-      // Desktop-only management of paired browser sessions.
+      // Management of paired browser sessions.
       if (path === "/api/browser-sessions" || path.startsWith("/api/browser-sessions/")) {
-        if (!electronAuthorized(req)) return json({ error: "unauthorized" }, 401);
+        if (!authorized(req)) return json({ error: "unauthorized" }, 401);
         if (path === "/api/browser-sessions") {
-          if (req.method === "GET") return json(browserSessions.list());
+          if (req.method === "GET") {
+            const token = sessionCookie(req);
+            return json(browserSessions.list(token));
+          }
           return json({ error: "method not allowed" }, 405);
         }
         const sessionMatch = path.match(/^\/api\/browser-sessions\/([\w-]+)$/);
         if (sessionMatch && req.method === "DELETE") {
-          if (!browserSessions.revoke(sessionMatch[1]!)) return json({ error: "not found" }, 404);
+          const targetId = sessionMatch[1]!;
+          if (!electronAuthorized(req)) {
+            const token = sessionCookie(req);
+            const currentSession = token ? browserSessions.findByToken(token) : null;
+            if (!currentSession || currentSession.id !== targetId) {
+              return json({ error: "forbidden: browsers may only disconnect themselves" }, 403);
+            }
+            browserSessions.revokeToken(token);
+            return json({ ok: true }, 200, {
+              "set-cookie": `${SESSION_COOKIE}=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0`,
+            });
+          }
+          if (!browserSessions.revoke(targetId)) return json({ error: "not found" }, 404);
           return json({ ok: true });
         }
         return json({ error: "not found" }, 404);

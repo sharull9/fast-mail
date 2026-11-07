@@ -17,6 +17,43 @@ function sessionDate(timestamp: number) {
   return new Date(timestamp).toLocaleString();
 }
 
+function formatBrowserName(userAgent: string | null): string | null {
+  if (!userAgent) return null;
+
+  let browser = "";
+  if (/edg([ea]|ios)?\/([\d.]+)/i.test(userAgent)) {
+    browser = "Edge";
+  } else if (/opr\/|opera/i.test(userAgent)) {
+    browser = "Opera";
+  } else if (/chrome|crios/i.test(userAgent) && !/edg/i.test(userAgent)) {
+    browser = "Chrome";
+  } else if (/firefox|fxios/i.test(userAgent)) {
+    browser = "Firefox";
+  } else if (/safari/i.test(userAgent) && !/chrome|crios/i.test(userAgent)) {
+    browser = "Safari";
+  }
+
+  let os = "";
+  if (/windows/i.test(userAgent)) {
+    os = "Windows";
+  } else if (/macintosh|mac os x/i.test(userAgent) && !/ipad|iphone|ipod/i.test(userAgent)) {
+    os = "macOS";
+  } else if (/iphone|ipad|ipod/i.test(userAgent)) {
+    os = "iOS";
+  } else if (/android/i.test(userAgent)) {
+    os = "Android";
+  } else if (/linux/i.test(userAgent)) {
+    os = "Linux";
+  } else if (/cros/i.test(userAgent)) {
+    os = "ChromeOS";
+  }
+
+  if (browser && os) return `${browser} on ${os}`;
+  if (browser) return browser;
+  if (os) return os;
+  return null;
+}
+
 export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [grant, setGrant] = useState<PairingGrant | null>(null);
   const [pending, setPending] = useState(false);
@@ -42,7 +79,6 @@ export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpe
   }, [copied]);
 
   const loadSessions = useCallback(async () => {
-    if (!desktop) return;
     setSessionsPending(true);
     setSessionsError("");
     try {
@@ -52,7 +88,7 @@ export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpe
     } finally {
       setSessionsPending(false);
     }
-  }, [desktop]);
+  }, []);
 
   useEffect(() => {
     if (open) void loadSessions();
@@ -92,12 +128,17 @@ export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpe
     }
   };
 
-  const revokeSession = async (id: string) => {
-    setRevokingId(id);
+  const revokeSession = async (session: PairedBrowser) => {
+    setRevokingId(session.id);
     setSessionsError("");
     try {
-      await api.revokeBrowserSession(id);
-      setSessions((current) => current.filter((session) => session.id !== id));
+      if (!desktop && session.current) {
+        await api.disconnectBrowser();
+        close(false);
+        return;
+      }
+      await api.revokeBrowserSession(session.id);
+      setSessions((current) => current.filter((s) => s.id !== session.id));
     } catch (cause) {
       setSessionsError(cause instanceof Error ? cause.message : "Could not revoke that browser.");
     } finally {
@@ -109,9 +150,16 @@ export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpe
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="sm:max-w-md" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Pair another browser</DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle>Paired browsers</DialogTitle>
+            <Button variant="ghost" size="sm" disabled={sessionsPending} onClick={() => void loadSessions()}>
+              Refresh
+            </Button>
+          </div>
           <DialogDescription>
-            Create a one-use code that expires in five minutes. It grants access to this server’s signed-in mailbox.
+            {desktop
+              ? "Sessions stay connected until revoked."
+              : "Sessions stay connected until revoked. You can disconnect this browser."}
           </DialogDescription>
         </DialogHeader>
         {grant && (
@@ -148,54 +196,61 @@ export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpe
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        {desktop && (
-          <div className="border-t pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-sm font-medium">Paired browsers</h3>
-                <p className="text-xs text-muted-foreground">Sessions stay connected until revoked.</p>
-              </div>
-              <Button variant="ghost" size="sm" disabled={sessionsPending} onClick={() => void loadSessions()}>
-                Refresh
-              </Button>
-            </div>
-            {sessionsPending && sessions.length === 0 ? (
-              <p className="mt-3 text-xs text-muted-foreground">Loading paired browsers…</p>
-            ) : sessions.length === 0 ? (
-              <p className="mt-3 text-xs text-muted-foreground">No paired browsers yet.</p>
-            ) : (
-              <ul className="mt-3 flex flex-col gap-2">
-                {sessions.map((session) => (
-                  <li key={session.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
+        <div className="min-w-0">
+          {sessionsPending && sessions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Loading paired browsers…</p>
+          ) : sessions.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No paired browsers yet.</p>
+          ) : (
+            <ul className="mt-3 flex min-w-0 flex-col gap-2">
+              {sessions.map((session) => {
+                const canDisconnect = desktop || session.current;
+                return (
+                  <li key={session.id} className="flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2">
                     <Globe className="size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
-                      <div
-                        className="truncate text-sm font-medium"
-                        title={session.userAgent ?? session.origin ?? "Paired browser"}
-                      >
-                        {session.userAgent ?? session.origin ?? "Paired browser"}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className="truncate text-sm font-medium"
+                          title={session.userAgent ?? session.origin ?? "Paired browser"}
+                        >
+                          {formatBrowserName(session.userAgent) ?? session.userAgent ?? session.origin ?? "Paired browser"}
+                        </span>
+                        {session.current && (
+                          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            This browser
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground">Last seen {sessionDate(session.lastSeenAt)}</div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={revokingId !== null}
-                      onClick={() => void revokeSession(session.id)}
-                    >
-                      {revokingId === session.id ? "Revoking…" : "Revoke"}
-                    </Button>
+                    {canDisconnect && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={revokingId !== null}
+                        onClick={() => void revokeSession(session)}
+                      >
+                        {revokingId === session.id
+                          ? desktop
+                            ? "Revoking…"
+                            : "Disconnecting…"
+                          : desktop
+                            ? "Revoke"
+                            : "Disconnect"}
+                      </Button>
+                    )}
                   </li>
-                ))}
-              </ul>
-            )}
-            {sessionsError && (
-              <Alert variant="destructive" className="mt-3">
-                <AlertDescription>{sessionsError}</AlertDescription>
-              </Alert>
-            )}
-          </div>
-        )}
+                );
+              })}
+            </ul>
+          )}
+          {sessionsError && (
+            <Alert variant="destructive" className="mt-3">
+              <AlertDescription>{sessionsError}</AlertDescription>
+            </Alert>
+          )}
+        </div>
         <DialogFooter className="flex-row justify-between sm:justify-between">
           <Button variant="outline" onClick={() => close(false)}>
             Close
