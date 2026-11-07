@@ -29,6 +29,20 @@
       "when": 1794054415686,
       "tag": "0003_moaning_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794072409520,
+      "tag": "0004_chunky_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794072433380,
+      "tag": "0005_futuristic_paladin",
+      "breakpoints": true
     }
   ]
 }

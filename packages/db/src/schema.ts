@@ -90,6 +90,8 @@ export const contacts = sqliteTable(
   {
     email: text("email").primaryKey(),
     name: text("name").notNull().default(""),
+    manualName: text("manual_name"),
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
     lastSeen: integer("last_seen").notNull(),
     count: integer("count").notNull().default(1),
   },

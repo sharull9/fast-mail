@@ -575,3 +575,55 @@ test("plain row clicks set a range anchor and ctrl clicks toggle without opening
   await page.locator('[data-thread-id="primary"]').click({ button: "right" });
   await expect(page.getByRole("menu").getByText("2 conversations", { exact: true })).toBeVisible();
 });
+
+test("mail import reports partial results and prevents accidental repeat submission", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockMail(page);
+  await page.route("**/api/mail/import?*", async (route) => {
+    expect(route.request().headers()["x-mailfast-account"]).toBe("me@example.com");
+    expect(route.request().postData()).toContain("Subject: Imported");
+    await route.fulfill({ json: { imported: 1, total: 2, failed: [{ index: 2, error: "Invalid MIME" }] } });
+  });
+  await page.goto("/mail/INBOX");
+  await page.getByRole("button", { name: "Toggle Sidebar", exact: true }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Import mail" }).click();
+  const dialog = page.getByRole("dialog", { name: "Import mail" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Mail files").setInputFiles({
+    name: "archive.mbox",
+    mimeType: "application/mbox",
+    buffer: Buffer.from("Subject: Imported\n\nBody"),
+  });
+  await dialog.getByRole("button", { name: "Import mail", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Imported 1 message into me@example.com");
+  await expect(dialog.getByRole("alert")).toContainText("message 2: Invalid MIME");
+  await expect(dialog.getByRole("button", { name: "Import mail", exact: true })).toBeDisabled();
+  await dialog.screenshot({ path: test.info().outputPath("import-mail.png") });
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+});
+
+test("mail export downloads original source from a message and a selected conversation", async ({ page }) => {
+  await mockMail(page);
+  const exports: unknown[] = [];
+  await page.route("**/api/mail/export", async (route) => {
+    expect(route.request().headers()["x-mailfast-account"]).toBe("me@example.com");
+    exports.push(route.request().postDataJSON());
+    await route.fulfill({ contentType: "message/rfc822", body: "Subject: Original\r\n\r\nBody" });
+  });
+  await page.goto("/mail/INBOX/primary");
+  await page.getByRole("button", { name: "More message actions" }).click();
+  const messageDownload = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Export message (.eml)", exact: true }).click();
+  expect((await messageDownload).suggestedFilename()).toBe("mailfast.eml");
+  expect(exports).toEqual([{ messageId: "message-primary" }]);
+  await page.keyboard.press("Escape");
+  await page.goto("/mail/INBOX");
+  await page.getByRole("checkbox", { name: "Select all", exact: true }).check();
+  await page.getByRole("button", { name: "More selection actions" }).click();
+  const conversationDownload = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Export conversations (.mbox)", exact: true }).click();
+  expect((await conversationDownload).suggestedFilename()).toBe("mailfast.mbox");
+  expect(exports[1]).toEqual({ threadIds: ["primary", "social", "updates"] });
+});

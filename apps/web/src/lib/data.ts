@@ -1,3 +1,4 @@
+import { clearContactCache } from "@/lib/contact-cache";
 import { QueryClient, queryOptions } from "@tanstack/react-query";
 import { createCollection, createOptimisticAction } from "@tanstack/react-db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
@@ -370,6 +371,16 @@ function disconnectEvents() {
 
 function receiveEvent(ev: ServerEvent) {
   const id = ev.accountId ?? getActiveAccountId();
+  if (ev.type === "contacts-changed") {
+    clearContactCache(id);
+    void queryClient.invalidateQueries({ queryKey: ["managed-contacts", id] });
+    return;
+  }
+  if (ev.type === "account-settings-changed") {
+    void queryClient.invalidateQueries({ queryKey: ["account-settings", id] });
+    void queryClient.invalidateQueries({ queryKey: ["auth"] });
+    return;
+  }
   if (ev.type === "accounts-changed") {
     void queryClient.invalidateQueries({ queryKey: ["auth"] });
     return;

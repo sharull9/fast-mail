@@ -21,6 +21,8 @@ import { Accounts } from "@/accounts.ts";
 import { PairingGrants, SessionStore, type BrowserSessionRecord } from "@/pairing.ts";
 import { acquireServerOwnership } from "@/server-ownership.ts";
 import { listThreadsResponse } from "@/threads.ts";
+import { importMail, exportMail } from "@/mail-transfer.ts";
+import { handleSettingsRequest } from "@/settings.ts";
 
 /**
  * Local HTTP API, launched by Electron as a sidecar (videorc/opencode style):
@@ -400,7 +402,25 @@ try {
         }
         if (path === "/api/sync" && req.method === "POST" && !auth.activeId() && !req.headers.has("x-mailfast-account"))
           return json({ ok: true });
-        const { store, sync } = accounts.resolve(req);
+        const { store, sync, gmail } = accounts.resolve(req);
+        if (path.startsWith("/api/settings/")) {
+          const accountId = req.headers.get("x-mailfast-account") ?? auth.activeId() ?? "";
+          const scopedEvents = new Events(accountId, (event) => events.send(event));
+          return (
+            (await handleSettingsRequest(req, { store, events: scopedEvents })) ?? json({ error: "Not found" }, 404)
+          );
+        }
+
+        if ((path === "/api/mail/import" || path === "/api/mail/export") && req.method === "POST") {
+          if (!gmail) return json({ error: "Gmail client not available" }, 400);
+          srv.timeout(req, 0);
+          if (path === "/api/mail/import") {
+            const response = await importMail(req, gmail, (id) => sync.ensureThread(id, true));
+            sync.wake();
+            return response;
+          }
+          return exportMail(req, gmail);
+        }
 
         // ---- sync
         if (path === "/api/status") return json(sync.status());

@@ -1,4 +1,9 @@
+import { cachedContacts, cacheContacts } from "@/lib/contact-cache";
 import type {
+  AccountSettings,
+  ContactPage,
+  SaveContact,
+  ManagedContact,
   AuthStatus,
   ConnectionStatus,
   Contact,
@@ -13,6 +18,8 @@ import type {
   SyncStatus,
   ThreadAction,
   ThreadDetail,
+  MailExportRequest,
+  MailImportResult,
 } from "@mailfast/shared";
 
 /**
@@ -90,6 +97,53 @@ async function call<T>(path: string, init?: RequestInit & { json?: unknown }): P
 }
 
 export const api = {
+  accountSettings: (accountId = activeAccountId) =>
+    call<AccountSettings>("/settings/account", { headers: accountHeaders(accountId) }),
+  saveAccountSettings: (value: AccountSettings, accountId = activeAccountId) =>
+    call<AccountSettings>("/settings/account", { method: "PUT", json: value, headers: accountHeaders(accountId) }),
+  managedContacts: (
+    opts: { q: string; hidden: boolean; offset: number; limit: number },
+    accountId = activeAccountId,
+  ) => {
+    const params = new URLSearchParams({
+      q: opts.q,
+      hidden: String(opts.hidden),
+      offset: String(opts.offset),
+      limit: String(opts.limit),
+    });
+    return call<ContactPage>(`/settings/contacts?${params}`, { headers: accountHeaders(accountId) });
+  },
+  saveContact: (value: SaveContact, accountId = activeAccountId) =>
+    call<ManagedContact>("/settings/contacts", { json: value, headers: accountHeaders(accountId) }),
+  setContactHidden: (email: string, hidden: boolean, accountId = activeAccountId) =>
+    call<{ ok: true }>("/settings/contacts", {
+      method: "PATCH",
+      json: { email, hidden },
+      headers: accountHeaders(accountId),
+    }),
+  importContacts: (contacts: Contact[], accountId = activeAccountId) =>
+    call<{ imported: number }>("/settings/contacts/import", { json: { contacts }, headers: accountHeaders(accountId) }),
+
+  importMail: (file: File, accountId = activeAccountId) =>
+    call<MailImportResult>(`/mail/import?format=${file.name.toLowerCase().endsWith(".mbox") ? "mbox" : "eml"}`, {
+      method: "POST",
+      body: file,
+      headers: accountHeaders(accountId),
+    }),
+  exportMail: async (selection: MailExportRequest, accountId = activeAccountId) => {
+    requirePaired();
+    const res = await request("/mail/export", { json: selection, headers: accountHeaders(accountId) });
+    if (!res.ok) return throwResponseError(res);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `mailfast.${"messageId" in selection ? "eml" : "mbox"}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  },
   connection: async () => {
     const res = await request("/connection");
     if (!res.ok) return throwResponseError(res);
@@ -172,12 +226,20 @@ export const api = {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       params.set("limit", String(limit));
-      const remote = await call<Contact[]>(`/contacts?${params.toString()}`, { signal, headers: accountHeaders(accountId) });
-      if (Array.isArray(remote) && remote.length > 0) return remote;
-    } catch {
-      // Fallback to local contacts when offline, unauthenticated, or server empty
+      const remote = await call<Contact[]>(`/contacts?${params.toString()}`, {
+        signal,
+        headers: accountHeaders(accountId),
+      });
+      if (signal?.aborted) return [];
+      cacheContacts(accountId, remote, q);
+      return remote;
+    } catch (error) {
+      if (signal?.aborted || error instanceof ApiError) throw error;
+      const search = q.trim().toLowerCase();
+      return cachedContacts(accountId)
+        .filter((value) => `${value.name} ${value.email}`.toLowerCase().includes(search))
+        .slice(0, limit);
     }
-    return searchFallbackContacts(q, limit);
   },
   attachmentTicket: (params: { messageId: string; attachmentId: string; filename?: string; mimeType?: string }) =>
     call<{ ticket: string; url: string }>("/attachment-ticket", { json: params }),
@@ -262,60 +324,3 @@ export async function openAttachmentInBrowser(
 function accountHeaders(id: string | null): HeadersInit {
   return id ? { "x-mailfast-account": id } : {};
 }
-
-const DEFAULT_CONTACTS: Contact[] = [
-  { name: "Sarah Connor", email: "sarah.connor@cyberdyne.com" },
-  { name: "John Connor", email: "john.connor@resistance.org" },
-  { name: "Kyle Reese", email: "kyle.reese@resistance.org" },
-  { name: "Alex Chen", email: "alex.chen@mailfast.io" },
-  { name: "Elena Rostova", email: "elena.rostova@techcorp.com" },
-  { name: "David Kim", email: "david.kim@designstudio.io" },
-  { name: "Sophia Martinez", email: "sophia.m@globalenterprise.com" },
-  { name: "Hikvision Support", email: "support@hikvision.com" },
-];
-
-export function getLocalContacts(): Contact[] {
-  if (typeof window === "undefined") return DEFAULT_CONTACTS;
-  try {
-    const raw = localStorage.getItem("mailfast.local-contacts");
-    if (!raw) return DEFAULT_CONTACTS;
-    const parsed = JSON.parse(raw) as Contact[];
-    const combined = [...parsed];
-    for (const d of DEFAULT_CONTACTS) {
-      if (!combined.some((c) => c.email.toLowerCase() === d.email.toLowerCase())) {
-        combined.push(d);
-      }
-    }
-    return combined;
-  } catch {
-    return DEFAULT_CONTACTS;
-  }
-}
-
-export function saveLocalContact(email: string, name = "") {
-  if (typeof window === "undefined" || !email) return;
-  try {
-    const contacts = getLocalContacts();
-    const existingIdx = contacts.findIndex((c) => c.email.toLowerCase() === email.toLowerCase());
-    if (existingIdx >= 0) {
-      if (name && !contacts[existingIdx]!.name) {
-        contacts[existingIdx]!.name = name;
-      }
-    } else {
-      contacts.unshift({ name: name || email.split("@")[0] || "", email });
-    }
-    localStorage.setItem("mailfast.local-contacts", JSON.stringify(contacts.slice(0, 100)));
-  } catch {
-    // ignore
-  }
-}
-
-export function searchFallbackContacts(q = "", limit = 20): Contact[] {
-  const all = getLocalContacts();
-  const query = q.trim().toLowerCase();
-  if (!query) return all.slice(0, limit);
-  return all
-    .filter((c) => c.email.toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query)))
-    .slice(0, limit);
-}
-

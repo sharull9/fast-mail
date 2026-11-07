@@ -1,4 +1,4 @@
-import { defineAppHotkeys, formatForDisplay, type AppHotkeyInput } from "@tanstack/react-hotkeys";
+import { defineAppHotkeys, formatForDisplay, useAppHotkeys, type AppHotkeyInput } from "@tanstack/react-hotkeys";
 
 export type ShortcutGroup = "Navigation" | "Actions" | "Selection" | "Search" | "Accounts";
 type ShortcutDefinition = AppHotkeyInput & { meta: { name: string; description: string; group: ShortcutGroup } };
@@ -167,11 +167,15 @@ export const accountHotkeys = [
   appHotkeys.account9,
 ];
 
-export function shortcutLabel(id: ShortcutId) {
-  const hotkey = appHotkeys[id].defaultHotkey;
-  return formatForDisplay(hotkey, {
-    keyLabels: /^[A-Z]$/.test(hotkey) ? { [hotkey]: hotkey.toLowerCase() } : undefined,
-  });
+export function useShortcutLabel() {
+  const effective = useAppHotkeys();
+  return (id: ShortcutId) => {
+    const hotkey = effective[id].hotkey;
+    if (!hotkey) return "";
+    return formatForDisplay(hotkey, {
+      keyLabels: typeof hotkey === "string" && /^[A-Z]$/.test(hotkey) ? { [hotkey]: hotkey.toLowerCase() } : undefined,
+    });
+  };
 }
 
 declare module "@tanstack/react-hotkeys" {

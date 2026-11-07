@@ -1,4 +1,4 @@
-import { shortcutLabel, type ShortcutId } from "@/lib/hotkeys";
+import { useShortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -68,6 +68,7 @@ export function CommandMenu({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const shortcutLabel = useShortcutLabel();
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const location = useRouterState({ select: (s) => s.location });
@@ -98,6 +99,15 @@ export function CommandMenu({
   }, [value]);
   const goLabel = (id: string) => void navigate({ to: "/mail/$labelId", params: { labelId: id } });
   const commands: MenuCommand[] = [
+    {
+      id: "global:settings",
+      name: "Settings",
+      token: "settings",
+      keywords: ["theme", "contacts", "preferences", "keybinds"],
+      icon: "command",
+      run: () => void navigate({ to: "/settings", search: { section: "appearance" } }),
+      disabled: false,
+    },
     ...[...SCOPES, ...SIDEBAR_ORDER.filter((id) => !SCOPES.includes(id))].map((id) => ({
       id: `label:${id.toLowerCase()}`,
       name: labelName(id),

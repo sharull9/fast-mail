@@ -151,6 +151,8 @@ export interface MailAccount {
   id: string;
   email: string;
   name: string | null;
+  profileName?: string | null;
+  signature?: string;
   image: string | null;
   unread: number;
 }
@@ -223,7 +225,9 @@ export type ServerEventData =
   | { type: "threads-changed"; labelIds: string[] }
   | { type: "labels-changed" }
   | { type: "thread-updated"; threadId: string }
-  | { type: "accounts-changed" };
+  | { type: "accounts-changed" }
+  | { type: "contacts-changed" }
+  | { type: "account-settings-changed" };
 
 export type ServerEvent = ServerEventData & { accountId: string };
 
@@ -279,3 +283,52 @@ export const contactSchema = z.object({
   email: z.string(),
 });
 export type Contact = z.infer<typeof contactSchema>;
+
+export const mailExportRequestSchema = z.union([
+  z.object({ messageId: z.string().min(1).max(256) }),
+  z.object({ threadIds: z.array(z.string().min(1).max(256)).min(1).max(500) }),
+]);
+export type MailExportRequest = z.infer<typeof mailExportRequestSchema>;
+export interface MailImportResult {
+  imported: number;
+  total: number;
+  failed: { index: number; error: string }[];
+}
+
+export const accountSettingsSchema = z.object({
+  displayName: z.string().trim().max(100),
+  signature: z.string().max(10_000),
+});
+export type AccountSettings = z.infer<typeof accountSettingsSchema>;
+export const contactEmailSchema = z.string().trim().toLowerCase().email().max(254);
+export const saveContactSchema = z.object({
+  email: contactEmailSchema,
+  name: z.string().trim().max(200),
+  originalEmail: contactEmailSchema.optional(),
+});
+export type SaveContact = z.infer<typeof saveContactSchema>;
+export interface ManagedContact extends Contact {
+  hidden: boolean;
+}
+export interface ContactPage {
+  contacts: ManagedContact[];
+  nextOffset: number | null;
+}
+export const contactVisibilitySchema = z.object({ email: contactEmailSchema, hidden: z.boolean() });
+export const contactImportSchema = z.object({
+  contacts: z.array(saveContactSchema.omit({ originalEmail: true })).max(100),
+});
+export const contactPageSchema = z.object({
+  q: z.string().max(254).default(""),
+  hidden: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export const devicePreferencesSchema = z.object({
+  version: z.literal(1),
+  theme: z.enum(["light", "dark", "system"]),
+  shortcuts: z.record(z.string(), z.unknown()),
+});

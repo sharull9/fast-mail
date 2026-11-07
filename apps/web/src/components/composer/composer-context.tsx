@@ -1,7 +1,13 @@
+import { withSignature } from "@/lib/signature";
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-import { api } from "@/lib/api";
+import { api, getActiveAccountId } from "@/lib/api";
 import { queryClient } from "@/lib/data";
-import { sendMessageRequestSchema, type SendMessageRequest, type SendMessageResponse } from "@mailfast/shared";
+import {
+  sendMessageRequestSchema,
+  type AuthStatus,
+  type SendMessageRequest,
+  type SendMessageResponse,
+} from "@mailfast/shared";
 
 export interface ComposerAttachment {
   id: string;
@@ -127,6 +133,9 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
 
   const openComposer = useCallback((initial?: Partial<ComposerDraft>, initialMode?: ComposerMode): string | null => {
     const mode = initialMode ?? "floating";
+    const auth = queryClient.getQueryData<AuthStatus>(["auth"]);
+    const signature = auth?.accounts.find((account) => account.id === getActiveAccountId())?.signature ?? "";
+    const initialBody = withSignature(initial?.bodyHtml ?? "", signature);
 
     // If opening an inline fixed reply for a thread, check if an inline composer for this thread already exists
     if (mode === "fixed" && initial?.threadId) {
@@ -145,7 +154,7 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
                     cc: initial?.cc ?? c.draft.cc,
                     bcc: initial?.bcc ?? c.draft.bcc,
                     subject: initial?.subject ?? c.draft.subject,
-                    bodyHtml: initial?.bodyHtml ?? c.draft.bodyHtml,
+                    bodyHtml: c.draft.bodyHtml,
                     inReplyTo: initial?.inReplyTo ?? c.draft.inReplyTo,
                     references: initial?.references ?? c.draft.references,
                     attachments: initial?.attachments ?? c.draft.attachments,
@@ -184,7 +193,7 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
                     cc: initial?.cc ?? [],
                     bcc: initial?.bcc ?? [],
                     subject: initial?.subject ?? "",
-                    bodyHtml: initial?.bodyHtml ?? "",
+                    bodyHtml: initialBody,
                     threadId: initial?.threadId,
                     inReplyTo: initial?.inReplyTo,
                     references: initial?.references,
@@ -214,7 +223,7 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
           cc: initial?.cc ?? [],
           bcc: initial?.bcc ?? [],
           subject: initial?.subject ?? "",
-          bodyHtml: initial?.bodyHtml ?? "",
+          bodyHtml: initialBody,
           threadId: initial?.threadId,
           inReplyTo: initial?.inReplyTo,
           references: initial?.references,

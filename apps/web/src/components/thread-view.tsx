@@ -1,3 +1,4 @@
+import { ExportMailItem } from "@/components/mail-transfer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
@@ -285,6 +286,7 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
             </IconButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
+            <ExportMailItem selection={{ threadIds: [threadId] }} />
             <DropdownMenuItem onSelect={() => act([threadId], { kind: t.important ? "unimportant" : "important" })}>
               <Icon name="IMPORTANT" />
               {t.important ? "Mark unimportant" : "Mark important"}
@@ -1148,7 +1150,8 @@ function ThreadMessageItem({
                       <MoreHorizontal className="size-3.5" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuContent align="end" className="w-60">
+                    <ExportMailItem selection={{ messageId: m.id }} />
                     <DropdownMenuItem onSelect={() => onReply?.(false)}>
                       <Reply className="size-3.5 mr-2" />
                       Reply

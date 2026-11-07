@@ -212,7 +212,7 @@ export class Gmail {
 
   private async request<T>(
     path: string,
-    opts: { method?: string; query?: string; body?: unknown; units: number; priority: Priority },
+    opts: { method?: string; query?: string; body?: unknown; units: number; priority: Priority; retry?: boolean },
   ): Promise<T> {
     let attempt = 0;
     for (;;) {
@@ -237,7 +237,7 @@ export class Gmail {
         continue;
       }
       const retryable = res.status === 429 || res.status >= 500 || (res.status === 403 && /rateLimit/i.test(text));
-      if (retryable && attempt < 6) {
+      if (retryable && opts.retry !== false && attempt < 6) {
         const retryAfter = Number(res.headers.get("retry-after")) * 1000;
         const wait = retryAfter > 0 ? retryAfter : Math.min(32_000, 500 * 2 ** attempt) + Math.random() * 250;
         if (res.status === 429 || res.status === 403) this.limiter.penalize(wait);
@@ -314,6 +314,26 @@ export class Gmail {
       priority,
     });
     return (res.messages ?? []).map(toMessageInput);
+  }
+
+  rawMessage(id: string) {
+    return this.request<{ raw: string }>(`/messages/${encodeURIComponent(id)}`, {
+      query: "format=raw&fields=raw",
+      units: UNITS.get,
+      priority: Priority.Interactive,
+    });
+  }
+
+  importMessage(raw: string) {
+    return this.request<{ id: string; threadId: string }>("/messages/import", {
+      method: "POST",
+      query: "internalDateSource=dateHeader",
+      body: { raw },
+      units: 25,
+      priority: Priority.Interactive,
+      // A retry after an ambiguous server failure could create a duplicate.
+      retry: false,
+    });
   }
 
   history(startHistoryId: string, pageToken?: string) {

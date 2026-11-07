@@ -4,6 +4,10 @@ import { and, asc, count, desc, eq, gte, inArray, lt, lte, notInArray, sql } fro
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type {
+  AccountSettings,
+  ContactPage,
+  ManagedContact,
+  SaveContact,
   AttachmentMeta,
   Contact,
   Label,
@@ -13,7 +17,13 @@ import type {
   ThreadDateRange,
   ThreadRow,
 } from "@mailfast/shared";
-import { inboxCategoryLabel, isInboxCategory, NON_PRIMARY_CATEGORY_LABELS } from "@mailfast/shared";
+import {
+  accountSettingsSchema,
+  saveContactSchema,
+  inboxCategoryLabel,
+  isInboxCategory,
+  NON_PRIMARY_CATEGORY_LABELS,
+} from "@mailfast/shared";
 import * as schema from "./schema.ts";
 import { account, contacts, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
 
@@ -590,31 +600,90 @@ export function openMailStore(opts: OpenOptions) {
     recordContact(email: string, name = "", date = Date.now()) {
       recordContact(email, name, date);
     },
+    accountSettings(): AccountSettings {
+      const raw = p.kvGet.get({ key: "account_settings" })?.value;
+      try {
+        const parsed = accountSettingsSchema.safeParse(raw ? JSON.parse(raw) : null);
+        if (parsed.success) return parsed.data;
+      } catch {
+        /* Recover a malformed saved preference. */
+      }
+      return { displayName: "", signature: "" };
+    },
+    saveAccountSettings(value: AccountSettings) {
+      const parsed = accountSettingsSchema.parse(value);
+      db.insert(kv)
+        .values({ key: "account_settings", value: JSON.stringify(parsed) })
+        .onConflictDoUpdate({ target: kv.key, set: { value: JSON.stringify(parsed) } })
+        .run();
+    },
+    saveContact(value: SaveContact): ManagedContact {
+      const contact = saveContactSchema.parse(value);
+      sqlite.transaction(() => {
+        if (contact.originalEmail && contact.originalEmail !== contact.email) {
+          sqlite.run("UPDATE contacts SET hidden = 1 WHERE email = ?", [contact.originalEmail]);
+        }
+        sqlite.run(
+          `INSERT INTO contacts (email, name, manual_name, hidden, last_seen, count)
+          VALUES (?, '', ?, 0, ?, 1) ON CONFLICT(email) DO UPDATE SET manual_name = excluded.manual_name, hidden = 0`,
+          [contact.email, contact.name, Date.now()],
+        );
+      })();
+      return { email: contact.email, name: contact.name, hidden: false };
+    },
+    setContactHidden(email: string, hidden: boolean) {
+      const result = sqlite.run("UPDATE contacts SET hidden = ? WHERE email = ?", [
+        Number(hidden),
+        email.trim().toLowerCase(),
+      ]);
+      if (!result.changes) throw new Error("Contact not found");
+    },
+    importContacts(values: Contact[]): number {
+      const parsed = values.map((value) => saveContactSchema.parse(value));
+      sqlite.transaction(() => {
+        for (const value of parsed) {
+          sqlite.run(
+            `INSERT INTO contacts (email, name, manual_name, last_seen, count)
+            VALUES (?, '', ?, ?, 1) ON CONFLICT(email) DO UPDATE SET manual_name = COALESCE(contacts.manual_name, excluded.manual_name)`,
+            [value.email, value.name, Date.now()],
+          );
+        }
+      })();
+      return parsed.length;
+    },
+    listContacts({
+      q,
+      hidden,
+      offset,
+      limit,
+    }: {
+      q: string;
+      hidden: boolean;
+      offset: number;
+      limit: number;
+    }): ContactPage {
+      const rows = sqlite
+        .query<{ email: string; name: string; hidden: number }, [number, string, string, number, number]>(
+          `SELECT email, COALESCE(manual_name, name) AS name, hidden FROM contacts
+         WHERE hidden = ? AND (email LIKE ? OR COALESCE(manual_name, name) LIKE ?)
+         ORDER BY email LIMIT ? OFFSET ?`,
+        )
+        .all(Number(hidden), `%${q.trim()}%`, `%${q.trim()}%`, limit + 1, offset);
+      return {
+        contacts: rows.slice(0, limit).map((row) => ({ ...row, hidden: Boolean(row.hidden) })),
+        nextOffset: rows.length > limit ? offset + limit : null,
+      };
+    },
     searchContacts(query: string, limit = 20): Contact[] {
       const q = query.trim().toLowerCase();
-      if (!q) {
-        return sqlite
-          .query<Contact, [number]>(`SELECT name, email FROM contacts ORDER BY count DESC, last_seen DESC LIMIT ?`)
-          .all(limit);
-      }
-      const term = `%${q}%`;
-      const prefix = `${q}%`;
       return sqlite
         .query<Contact, [string, string, string, string, number]>(
-          `SELECT name, email
-           FROM contacts
-           WHERE email LIKE ? OR name LIKE ?
-           ORDER BY
-             CASE
-               WHEN email LIKE ? THEN 1
-               WHEN name LIKE ? THEN 2
-               ELSE 3
-             END,
-             count DESC,
-             last_seen DESC
-           LIMIT ?`,
+          `SELECT COALESCE(manual_name, name) AS name, email FROM contacts
+         WHERE hidden = 0 AND (email LIKE ? OR COALESCE(manual_name, name) LIKE ?)
+         ORDER BY CASE WHEN email LIKE ? THEN 1 WHEN COALESCE(manual_name, name) LIKE ? THEN 2 ELSE 3 END,
+         count DESC, last_seen DESC, email LIMIT ?`,
         )
-        .all(term, term, prefix, prefix, limit);
+        .all(`%${q}%`, `%${q}%`, `${q}%`, `${q}%`, limit);
     },
 
     close() {

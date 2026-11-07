@@ -84,6 +84,9 @@ export class Accounts {
       ...status,
       accounts: status.accounts.map((account) => ({
         ...account,
+        profileName: account.name,
+        name: this.runtimes.get(account.id)?.store.accountSettings().displayName || account.name,
+        signature: this.runtimes.get(account.id)?.store.accountSettings().signature ?? "",
         unread:
           this.runtimes
             .get(account.id)

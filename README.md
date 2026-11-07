@@ -54,6 +54,16 @@ Google OAuth client (one-time):
 
 Desktop clients accept any `127.0.0.1` loopback redirect, so no redirect URI needs registering. Sign-in opens in your system browser (Google blocks embedded webviews).
 
+## Settings
+
+Open **Settings** from the account menu or search for `@settings` in the command menu.
+
+- **Appearance:** choose Light, Dark, or System. Theme and keyboard shortcut preferences are saved on this device.
+- **Keyboard shortcuts:** record a new shortcut, disable an action, or restore defaults. Conflicting shortcuts are flagged before saving.
+- **Accounts:** change each account's Mailfast display name and compose signature, reconnect, or manage sign-in. These settings do not change your Google profile.
+- **Contacts:** manage the email recommendations extracted from mail, add addresses manually, and edit their names. Removing a recommendation hides it from suggestions; it can be restored later. Contacts and account details are stored separately for each mailbox.
+- **Mail data:** import EML or MBOX files. Export individual messages as EML, or conversations and selected conversations as MBOX, from their menus. Imports and exports preserve attachments and support up to 500 messages and 25 MB per file or export.
+
 ## Development
 
 ```bash

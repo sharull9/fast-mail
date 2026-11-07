@@ -1,5 +1,6 @@
+import { ExportMailItem } from "@/components/mail-transfer";
 import { useHotkeys } from "@tanstack/react-hotkeys";
-import { appHotkeys, shortcutLabel, type ShortcutId } from "@/lib/hotkeys";
+import { appHotkeys, useShortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
@@ -362,6 +363,7 @@ export function ThreadList({
                 <DropdownMenuItem onSelect={() => bulk({ kind: "unstar" })}>Unstar</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => bulk({ kind: "important" })}>Mark important</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => bulk({ kind: "unimportant" })}>Mark unimportant</DropdownMenuItem>
+                <ExportMailItem selection={{ threadIds: selection.selectedIds }} />
                 <DropdownMenuItem onSelect={selection.clear}>Clear selection</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -477,6 +479,7 @@ const Row = memo(function Row({
   onGmail: (id: string) => void;
   targetIds: (id: string) => string[];
 }) {
+  const shortcutLabel = useShortcutLabel();
   const [contextCount, setContextCount] = useState(1);
   const inInbox = t.labelIds.includes("INBOX");
   const inTrash = t.labelIds.includes("TRASH");

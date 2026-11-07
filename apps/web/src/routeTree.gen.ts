@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as MailLabelIdRouteImport } from './routes/mail.$labelId'
 import { Route as MailLabelIdThreadIdRouteImport } from './routes/mail.$labelId.$threadId'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MailLabelIdRoute = MailLabelIdRouteImport.update({
@@ -38,12 +44,14 @@ const MailLabelIdThreadIdRoute = MailLabelIdThreadIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
   '/mail/$labelId/$threadId': typeof MailLabelIdThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
   '/mail/$labelId/$threadId': typeof MailLabelIdThreadIdRoute
 }
@@ -51,21 +59,38 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
   '/mail/$labelId/$threadId': typeof MailLabelIdThreadIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/search' | '/mail/$labelId' | '/mail/$labelId/$threadId'
+  fullPaths:
+    | '/'
+    | '/search'
+    | '/settings'
+    | '/mail/$labelId'
+    | '/mail/$labelId/$threadId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/search' | '/mail/$labelId' | '/mail/$labelId/$threadId'
+  to:
+    | '/'
+    | '/search'
+    | '/settings'
+    | '/mail/$labelId'
+    | '/mail/$labelId/$threadId'
   id:
-    '__root__' | '/' | '/search' | '/mail/$labelId' | '/mail/$labelId/$threadId'
+    | '__root__'
+    | '/'
+    | '/search'
+    | '/settings'
+    | '/mail/$labelId'
+    | '/mail/$labelId/$threadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SearchRoute: typeof SearchRoute
+  SettingsRoute: typeof SettingsRoute
   MailLabelIdRoute: typeof MailLabelIdRouteWithChildren
 }
 
@@ -83,6 +108,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mail/$labelId': {
@@ -117,6 +149,7 @@ const MailLabelIdRouteWithChildren = MailLabelIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SearchRoute: SearchRoute,
+  SettingsRoute: SettingsRoute,
   MailLabelIdRoute: MailLabelIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport

@@ -1,5 +1,8 @@
-import { HotkeysProvider, useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
-import { appHotkeys, accountHotkeys, shortcutLabel } from "@/lib/hotkeys";
+import { PreferencesProvider } from "@/components/preferences-provider";
+import { themeBootstrap } from "@/lib/preferences";
+import { ImportMailDialog } from "@/components/mail-transfer";
+import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
+import { appHotkeys, accountHotkeys, useShortcutLabel } from "@/lib/hotkeys";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import {
@@ -49,7 +52,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw, PenSquare } from "lucide-react";
+import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw, PenSquare, Settings } from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { AppContextMenu } from "@/components/app-context-menu";
 import { ComposerProvider, ComposerPanel, useComposer } from "@/components/composer";
@@ -83,8 +86,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
         <HeadContent />
       </head>
       <body>
@@ -100,13 +104,9 @@ function Root() {
     <QueryClientProvider client={queryClient}>
       {/* Everything talks to the local API, so render only in the client (the shell is prerendered). */}
       <ClientOnly fallback={<div className="splash" />}>
-        <HotkeysProvider
-          appHotkeys={appHotkeys}
-          scope="app"
-          defaultOptions={{ hotkey: { preventDefault: true, stopPropagation: false } }}
-        >
+        <PreferencesProvider>
           <AuthGate />
-        </HotkeysProvider>
+        </PreferencesProvider>
       </ClientOnly>
     </QueryClientProvider>
   );
@@ -283,13 +283,16 @@ function Sidebar({
   onPairBrowser: () => void;
   onKeyboardShortcuts: () => void;
 }) {
+  const shortcutLabel = useShortcutLabel();
   const auth = useQuery(authQuery).data;
   const accounts = auth?.accounts ?? [];
   const active = accounts.find((a) => a.id === auth?.activeAccountId);
   const account = active?.email ?? auth?.account ?? "";
+  const navigate = useNavigate();
   const desktop = isDesktopApp();
   const [accountError, setAccountError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const perform = (operation: Promise<unknown>) => {
     setAccountError(null);
     void operation.catch((error: unknown) =>
@@ -311,6 +314,7 @@ function Sidebar({
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <MailSidebar collapsible="icon" aria-label="Mail navigation">
+      <ImportMailDialog open={importOpen} onOpenChange={setImportOpen} account={account} />
       <SidebarHeader className="group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:pb-0">
         <div className="flex min-w-0 items-center gap-1">
           <DropdownMenu>
@@ -370,6 +374,14 @@ function Sidebar({
               >
                 <Icon name="ALL" />
                 Sync now
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void navigate({ to: "/settings", search: { section: "appearance" } })}>
+                <Settings />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+                <Icon name="INBOX" />
+                Import mail...
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onKeyboardShortcuts}>
                 <Icon name="command" />
@@ -431,15 +443,13 @@ function Sidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Compose message"
-              className="rounded-lg bg-primary text-primary-foreground! font-semibold hover:bg-primary/85! hover:text-primary-foreground! active:bg-primary/95! group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center shadow-xs [&>svg]:text-primary-foreground!"
+              className="rounded-md bg-primary text-primary-foreground font-medium shadow-xs hover:bg-primary/90 active:bg-primary/95 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center [&>svg]:text-primary-foreground"
               onClick={onCompose}
               tooltip={`Compose message (${shortcutLabel("compose")})`}
             >
-              <PenSquare className="size-4 shrink-0 text-primary-foreground!" />
-              <span className="font-semibold text-primary-foreground! group-data-[collapsible=icon]:hidden">
-                Compose
-              </span>
-              <kbd className="ml-auto text-xs text-primary-foreground/75! font-semibold group-data-[collapsible=icon]:hidden">
+              <PenSquare className="size-4 shrink-0 text-primary-foreground" />
+              <span className="font-medium group-data-[collapsible=icon]:hidden">Compose</span>
+              <kbd className="ml-auto pointer-events-none inline-flex h-5 min-w-5 select-none items-center justify-center rounded border border-primary-foreground/20 bg-primary-foreground/15 px-1.5 font-mono text-[10px] font-medium text-primary-foreground group-data-[collapsible=icon]:hidden">
                 {shortcutLabel("compose")}
               </kbd>
             </SidebarMenuButton>
@@ -447,13 +457,15 @@ function Sidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Search mail"
-              className="rounded-lg border bg-background text-muted-foreground group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:hover:bg-sidebar-accent group-data-[collapsible=icon]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:active:bg-sidebar-accent group-data-[collapsible=icon]:active:text-sidebar-accent-foreground"
+              className="rounded-md border border-sidebar-border bg-sidebar-accent/50 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:border-sidebar-border group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:hover:bg-sidebar-accent group-data-[collapsible=icon]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:active:bg-sidebar-accent group-data-[collapsible=icon]:active:text-sidebar-accent-foreground"
               onClick={onSearch}
               tooltip={`Search mail (${shortcutLabel("search")})`}
             >
               <Icon name="search" />
-              <span>Search mail</span>
-              <kbd className="ml-auto group-data-[collapsible=icon]:hidden">{shortcutLabel("search")}</kbd>
+              <span className="font-medium group-data-[collapsible=icon]:hidden">Search mail</span>
+              <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center justify-center rounded border border-sidebar-border bg-sidebar/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground shadow-2xs group-data-[collapsible=icon]:hidden">
+                {shortcutLabel("search")}
+              </kbd>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

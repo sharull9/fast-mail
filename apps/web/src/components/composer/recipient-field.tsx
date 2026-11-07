@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { MailAvatar } from "@/components/mail-avatar";
-import { api, saveLocalContact } from "@/lib/api";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Contact } from "@mailfast/shared";
 
@@ -30,6 +30,12 @@ export function RecipientField({
   placeholder,
   autoFocus = false,
 }: RecipientFieldProps) {
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const changed = () => setRevision((n) => n + 1);
+    window.addEventListener("mailfast:contacts-changed", changed);
+    return () => window.removeEventListener("mailfast:contacts-changed", changed);
+  }, []);
   const [inputValue, setInputValue] = useState("");
   const [suggestions, setSuggestions] = useState<Contact[]>([]);
   const [selectedEmail, setSelectedEmail] = useState("");
@@ -73,7 +79,7 @@ export function RecipientField({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [inputValue, recipients]);
+  }, [inputValue, recipients, revision]);
 
   const filteredSuggestions = suggestions.filter((c) => !recipients.includes(c.email));
 
@@ -90,7 +96,6 @@ export function RecipientField({
     for (const item of items) {
       if (!next.includes(item)) {
         next.push(item);
-        saveLocalContact(item);
       }
     }
     onChange(next);
@@ -105,7 +110,6 @@ export function RecipientField({
   };
 
   const handleSelectContact = (contact: Contact) => {
-    saveLocalContact(contact.email, contact.name);
     addRecipient(contact.email);
     inputRef.current?.focus();
   };
@@ -260,9 +264,7 @@ export function RecipientField({
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{contact.name || contact.email}</div>
-                    {contact.name && (
-                      <div className="truncate text-[10px] text-muted-foreground">{contact.email}</div>
-                    )}
+                    {contact.name && <div className="truncate text-[10px] text-muted-foreground">{contact.email}</div>}
                   </div>
                 </button>
               );

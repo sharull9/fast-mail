@@ -1,5 +1,5 @@
 import { Mail } from "lucide-react";
-import { shortcutLabel, type ShortcutId } from "@/lib/hotkeys";
+import { useShortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 
 const shortcuts: { label: string; keys: ShortcutId[] }[] = [
   { label: "Next / previous conversation", keys: ["next", "previous"] },
@@ -11,6 +11,7 @@ const shortcuts: { label: string; keys: ShortcutId[] }[] = [
 ];
 
 export function EmptyPreview({ summary }: { summary?: string }) {
+  const shortcutLabel = useShortcutLabel();
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center py-6">
@@ -18,7 +19,7 @@ export function EmptyPreview({ summary }: { summary?: string }) {
           <Mail aria-hidden="true" className="size-5" />
         </div>
         <h2 className="text-sm font-medium">No conversation selected</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Pick one from the list, or press j / k</p>
+        <p className="mt-1 text-xs text-muted-foreground">Pick a conversation from the list to read it.</p>
         {summary && <p className="mt-3 text-xs text-muted-foreground tabular-nums">{summary}</p>}
 
         <section aria-label="Quick shortcuts" className="mt-6 border-t pt-5">

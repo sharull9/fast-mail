@@ -1,8 +1,9 @@
 import { useAppHotkeyList } from "@tanstack/react-hotkeys";
-import { shortcutLabel } from "@/lib/hotkeys";
+import { useShortcutLabel } from "@/lib/hotkeys";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export function KeyboardShortcuts({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const shortcutLabel = useShortcutLabel();
   const items = useAppHotkeyList();
   const groups = [...new Set(items.map(({ appHotkey }) => appHotkey.meta?.group))];
   return (
@@ -28,7 +29,9 @@ export function KeyboardShortcuts({ open, onOpenChange }: { open: boolean; onOpe
                   >
                     <dt className="text-sm">{appHotkey.meta?.name}</dt>
                     <dd>
-                      <kbd className="rounded border px-1.5 text-[11px] font-mono">{shortcutLabel(appHotkey.id)}</kbd>
+                      <kbd className="rounded border px-1.5 text-[11px] font-mono">
+                        {shortcutLabel(appHotkey.id) || "Unassigned"}
+                      </kbd>
                     </dd>
                   </div>
                 ))}
