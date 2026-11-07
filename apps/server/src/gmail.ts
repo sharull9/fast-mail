@@ -330,6 +330,17 @@ export class Gmail {
     });
   }
 
+  getAttachment(
+    messageId: string,
+    attachmentId: string,
+    priority = Priority.Interactive,
+  ): Promise<{ size: number; data: string }> {
+    return this.request<{ size: number; data: string }>(
+      `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      { units: UNITS.get, priority },
+    );
+  }
+
   trashThread(threadId: string, untrash = false) {
     return this.request(`/threads/${encodeURIComponent(threadId)}/${untrash ? "untrash" : "trash"}`, {
       method: "POST",

@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
 import { authQuery, labelsCollection, threadQuery } from "@/lib/data";
 import { cleanSnippet, HIDDEN_LABELS, labelName, longDate, parseAddresses } from "@/lib/format";
-import { openExternal } from "@/lib/api";
+import {
+  downloadAttachment,
+  fetchAttachmentBlob,
+  getAttachmentUrl,
+  isDesktopApp,
+  openAttachmentInBrowser,
+  openExternal,
+} from "@/lib/api";
 import { act } from "@/components/thread-list";
-import type { AttachmentMeta, MessageMeta } from "@mailfast/shared";
+import { usePreviewWorkspace } from "@/hooks/use-preview-workspace";
+import type { MessageMeta, ThreadAttachment } from "@mailfast/shared";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,13 +21,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Icon } from "@/components/icon";
 import {
+  Check,
   ChevronDown,
   CircleAlert,
+  Columns2,
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
   File,
   FileArchive,
   FileCode,
   FileText,
   Image,
+  Loader2,
+  Mail,
   MoreHorizontal,
   Paperclip,
   X,
@@ -33,6 +49,14 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 /**
@@ -101,6 +125,7 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
   const gmailUrl = `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${threadId}`;
   const inInbox = t.labelIds.includes("INBOX");
   const inTrash = t.labelIds.includes("TRASH");
+  const [previewAttachment, setPreviewAttachment] = useState<ThreadAttachment | null>(null);
 
   const allAttachments = useMemo(() => {
     const list: ThreadAttachment[] = [];
@@ -215,51 +240,46 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
 
         <ol className="divide-y divide-border/60">
           {data.messages.map((m) => (
-            <ThreadMessageItem key={m.id} message={m} account={account} defaultExpanded={true} />
+            <ThreadMessageItem
+              key={m.id}
+              message={m}
+              account={account}
+              defaultExpanded={true}
+              onPreview={setPreviewAttachment}
+              gmailUrl={gmailUrl}
+              paneId={paneId}
+            />
           ))}
         </ol>
       </div>
-      <div className="sticky bottom-0 z-10 mt-auto bg-background/95 backdrop-blur-xs">
-        {allAttachments.length > 0 && (
-          <StickyAttachmentsBar attachments={allAttachments} totalBytes={totalAttachmentBytes} gmailUrl={gmailUrl} />
-        )}
-        <footer className="p-5 pt-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                {data.messages.length} {data.messages.length === 1 ? "message" : "messages"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => openExternal(gmailUrl)}>
-                <Icon name="external" />
-                Reply in Gmail
-              </Button>
-              <Button size="sm" onClick={() => openExternal(gmailUrl)}>
-                Open in Gmail <Icon name="external" />
-              </Button>
-            </div>
-          </div>
-        </footer>
-      </div>
+      {allAttachments.length > 0 && (
+        <div className="sticky bottom-0 z-10 mt-auto bg-background/95 backdrop-blur-xs">
+          <StickyAttachmentsBar
+            attachments={allAttachments}
+            totalBytes={totalAttachmentBytes}
+            gmailUrl={gmailUrl}
+            onPreview={setPreviewAttachment}
+            paneId={paneId}
+          />
+        </div>
+      )}
+      <AttachmentPreviewDialog
+        attachment={previewAttachment}
+        gmailUrl={gmailUrl}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </div>
   );
 }
 
-function formatBytes(bytes?: number): string {
+export function formatBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-interface ThreadAttachment extends AttachmentMeta {
-  messageId: string;
-  fromName: string;
-  date: number;
-}
-
-function getAttachmentIcon(mimeType: string, filename: string) {
+export function getAttachmentIcon(mimeType: string, filename: string) {
   const mime = (mimeType || "").toLowerCase();
   const ext = (filename || "").split(".").pop()?.toLowerCase() ?? "";
 
@@ -288,14 +308,350 @@ function getAttachmentIcon(mimeType: string, filename: string) {
   return <File className="size-4 text-muted-foreground shrink-0" />;
 }
 
+function AttachmentCard({
+  attachment,
+  onPreview,
+  gmailUrl,
+  paneId,
+}: {
+  attachment: ThreadAttachment;
+  onPreview: (attachment: ThreadAttachment) => void;
+  gmailUrl: string;
+  paneId?: string;
+}) {
+  const workspace = usePreviewWorkspace();
+  const [copied, setCopied] = useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onPreview(attachment);
+  };
+
+  const handleCopyLink = async () => {
+    if (!attachment.id) return;
+    const url = `${window.location.origin}${getAttachmentUrl(attachment.messageId, attachment.id, attachment.filename, attachment.mimeType)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          draggable={true}
+          onDragStart={(e) => {
+            e.dataTransfer.setData("application/mailfast-attachment", JSON.stringify(attachment));
+            e.dataTransfer.setData("text/plain", attachment.filename);
+            if (paneId) {
+              e.dataTransfer.setData("application/mailfast-source-pane", paneId);
+            }
+            e.dataTransfer.effectAllowed = "copyMove";
+          }}
+          onClick={handleClick}
+          className="group inline-flex cursor-grab active:cursor-grabbing items-center gap-2 rounded-lg border border-border/70 bg-background/90 px-3 py-2 text-xs transition-colors hover:border-primary/50 hover:bg-muted/50 shadow-2xs select-none"
+          title={`${attachment.filename} (${formatBytes(attachment.size)}) - Drag into workspace, click to preview, right-click for options`}
+        >
+          {getAttachmentIcon(attachment.mimeType, attachment.filename)}
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate max-w-[200px] font-medium text-foreground group-hover:text-primary">
+              {attachment.filename}
+            </span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {formatBytes(attachment.size)} · from {attachment.fromName}
+            </span>
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        <ContextMenuItem onClick={() => onPreview(attachment)}>
+          <Eye className="size-4 mr-2" />
+          Preview
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            if (paneId && workspace.canSplitRight(paneId)) {
+              workspace.dropAttachment(paneId, attachment, "right");
+            } else if (workspace.focusedPaneId) {
+              workspace.setAttachment(workspace.focusedPaneId, attachment);
+            }
+          }}
+        >
+          <Columns2 className="size-4 mr-2" />
+          Open in workspace
+        </ContextMenuItem>
+        {attachment.id && (
+          <>
+            <ContextMenuItem
+              onClick={() =>
+                void openAttachmentInBrowser(
+                  attachment.messageId,
+                  attachment.id!,
+                  attachment.filename,
+                  attachment.mimeType,
+                )
+              }
+            >
+              <ExternalLink className="size-4 mr-2" />
+              {isDesktopApp() ? "Open in browser" : "Open in new tab"}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() =>
+                void downloadAttachment(attachment.messageId, attachment.id!, attachment.filename, attachment.mimeType)
+              }
+            >
+              <Download className="size-4 mr-2" />
+              Download
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => void handleCopyLink()}>
+              {copied ? <Check className="size-4 mr-2 text-emerald-500" /> : <Copy className="size-4 mr-2" />}
+              {copied ? "Copied link!" : "Copy link"}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        <ContextMenuItem onClick={() => openExternal(gmailUrl)}>
+          <Mail className="size-4 mr-2" />
+          Open in Gmail
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+function AttachmentPreviewDialog({
+  attachment,
+  gmailUrl,
+  onClose,
+}: {
+  attachment: ThreadAttachment | null;
+  gmailUrl: string;
+  onClose: () => void;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mime = (attachment?.mimeType || "").toLowerCase();
+  const ext = (attachment?.filename || "").split(".").pop()?.toLowerCase() ?? "";
+  const isImage = mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext);
+  const isPdf = mime === "application/pdf" || ext === "pdf";
+  const isText =
+    mime.startsWith("text/") ||
+    mime.includes("json") ||
+    mime.includes("javascript") ||
+    mime.includes("typescript") ||
+    ["txt", "json", "js", "ts", "tsx", "jsx", "html", "css", "py", "sh", "csv", "log", "md"].includes(ext);
+
+  useEffect(() => {
+    if (!attachment || !attachment.id) {
+      setBlobUrl(null);
+      setTextContent(null);
+      setError(null);
+      return;
+    }
+
+    let active = true;
+    let createdUrl: string | null = null;
+    setLoading(true);
+    setError(null);
+
+    fetchAttachmentBlob(attachment.messageId, attachment.id, attachment.filename, attachment.mimeType)
+      .then(async (blob) => {
+        if (!active) return;
+        if (isText) {
+          const text = await blob.text();
+          if (active) setTextContent(text);
+        }
+        const url = URL.createObjectURL(blob);
+        createdUrl = url;
+        if (active) setBlobUrl(url);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Failed to load attachment");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [attachment, isText]);
+
+  if (!attachment) return null;
+
+  return (
+    <Dialog open={Boolean(attachment)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-4 sm:p-6 overflow-hidden">
+        <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b pb-3 pr-8">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {getAttachmentIcon(attachment.mimeType, attachment.filename)}
+            <div className="min-w-0">
+              <DialogTitle className="truncate text-base font-semibold">{attachment.filename}</DialogTitle>
+              <p className="text-xs text-muted-foreground truncate">
+                {formatBytes(attachment.size)} · Sent by {attachment.fromName}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {attachment.id && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void downloadAttachment(
+                      attachment.messageId,
+                      attachment.id!,
+                      attachment.filename,
+                      attachment.mimeType,
+                    )
+                  }
+                  title="Download attachment"
+                >
+                  <Download className="size-3.5" />
+                  <span className="hidden sm:inline">Download</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void openAttachmentInBrowser(
+                      attachment.messageId,
+                      attachment.id!,
+                      attachment.filename,
+                      attachment.mimeType,
+                    )
+                  }
+                  title={isDesktopApp() ? "Open in browser" : "Open in new tab"}
+                >
+                  <ExternalLink className="size-3.5" />
+                  <span className="hidden sm:inline">{isDesktopApp() ? "Open in browser" : "Open in new tab"}</span>
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => openExternal(gmailUrl)} title="Open thread in Gmail">
+              <Mail className="size-3.5" />
+              <span className="hidden sm:inline">Gmail</span>
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-[300px] overflow-auto flex items-center justify-center p-2">
+          {loading && (
+            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+              <Loader2 className="size-6 animate-spin text-primary" />
+              <span className="text-xs">Loading attachment preview…</span>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="flex flex-col items-center gap-3 p-6 text-center">
+              <Alert variant="destructive" className="max-w-md">
+                <CircleAlert className="size-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+              {attachment.id && (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    void downloadAttachment(
+                      attachment.messageId,
+                      attachment.id!,
+                      attachment.filename,
+                      attachment.mimeType,
+                    )
+                  }
+                >
+                  <Download className="size-3.5" />
+                  Try Download Instead
+                </Button>
+              )}
+            </div>
+          )}
+
+          {!loading && !error && blobUrl && (
+            <>
+              {isImage && (
+                <img
+                  src={blobUrl}
+                  alt={attachment.filename}
+                  className="max-h-[70vh] max-w-full rounded-md object-contain shadow-xs"
+                />
+              )}
+              {isPdf && (
+                <iframe
+                  src={blobUrl}
+                  title={attachment.filename}
+                  className="w-full h-[70vh] rounded-md border border-border/80 bg-white"
+                />
+              )}
+              {isText && textContent !== null && (
+                <pre className="w-full max-h-[70vh] overflow-auto rounded-md border border-border/70 bg-muted/30 p-4 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap select-text">
+                  {textContent}
+                </pre>
+              )}
+              {!isImage && !isPdf && !isText && (
+                <div className="flex flex-col items-center gap-3 p-8 text-center">
+                  <div className="rounded-full bg-muted p-4">
+                    {getAttachmentIcon(attachment.mimeType, attachment.filename)}
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-foreground">{attachment.filename}</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {formatBytes(attachment.size)} · {attachment.mimeType || "Binary file"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      In-app preview is not supported for this file type.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() =>
+                      void downloadAttachment(
+                        attachment.messageId,
+                        attachment.id!,
+                        attachment.filename,
+                        attachment.mimeType,
+                      )
+                    }
+                    className="mt-2"
+                  >
+                    <Download className="size-4" />
+                    Download File
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {!loading && !error && !blobUrl && (
+            <div className="text-center text-xs text-muted-foreground">No preview available for this attachment.</div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function StickyAttachmentsBar({
   attachments,
   totalBytes,
   gmailUrl,
+  onPreview,
+  paneId,
 }: {
   attachments: ThreadAttachment[];
   totalBytes: number;
   gmailUrl: string;
+  onPreview: (attachment: ThreadAttachment) => void;
+  paneId?: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -326,22 +682,13 @@ function StickyAttachmentsBar({
       {!collapsed && (
         <div className="mt-2.5 flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
           {attachments.map((att, idx) => (
-            <div
+            <AttachmentCard
               key={att.id ?? `${att.filename}-${idx}`}
-              onClick={() => openExternal(gmailUrl)}
-              className="group inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-background/90 px-3 py-2 text-xs transition-colors hover:border-primary/50 hover:bg-muted/50 shadow-2xs"
-              title={`${att.filename} (${formatBytes(att.size)}) - sent by ${att.fromName}. Click to open in Gmail.`}
-            >
-              {getAttachmentIcon(att.mimeType, att.filename)}
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate max-w-[200px] font-medium text-foreground group-hover:text-primary">
-                  {att.filename}
-                </span>
-                <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {formatBytes(att.size)} · from {att.fromName}
-                </span>
-              </div>
-            </div>
+              attachment={att}
+              onPreview={onPreview}
+              gmailUrl={gmailUrl}
+              paneId={paneId}
+            />
           ))}
         </div>
       )}
@@ -351,7 +698,7 @@ function StickyAttachmentsBar({
 
 function HtmlBody({ html }: { html: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState<number>(120);
+  const [height, setHeight] = useState<number>(200);
 
   const srcDoc = useMemo(() => {
     return `<!DOCTYPE html>
@@ -364,23 +711,25 @@ function HtmlBody({ html }: { html: string }) {
     *, *::before, *::after {
       box-sizing: border-box;
     }
-    body {
+    html, body {
       margin: 0;
-      padding: 14px 16px;
+      padding: 0;
+      background-color: #ffffff;
+      color: #1a1a1a;
+    }
+    body {
+      padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       font-size: 14px;
-      line-height: 1.6;
-      color: #1a1a1a;
-      background-color: #ffffff;
+      line-height: 1.5;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
     img {
-      max-width: 100% !important;
-      height: auto !important;
+      max-width: 100%;
     }
     table {
-      max-width: 100% !important;
+      max-width: 100%;
     }
     a {
       color: #2563eb;
@@ -403,39 +752,84 @@ function HtmlBody({ html }: { html: string }) {
 </html>`;
   }, [html]);
 
-  const updateHeight = () => {
+  const updateHeight = useCallback(() => {
     try {
-      const doc = iframeRef.current?.contentDocument;
-      if (doc) {
-        const h = Math.max(doc.body?.scrollHeight ?? 0, doc.documentElement?.scrollHeight ?? 0);
-        if (h > 0) {
-          setHeight(h + 8);
-        }
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+
+      const body = doc.body;
+      const htmlEl = doc.documentElement;
+      if (!body || !htmlEl) return;
+
+      const bodyScroll = body.scrollHeight || 0;
+      const bodyOffset = body.offsetHeight || 0;
+      const htmlScroll = htmlEl.scrollHeight || 0;
+      const htmlOffset = htmlEl.offsetHeight || 0;
+      const bodyRect = Math.ceil(body.getBoundingClientRect().height || 0);
+
+      const maxH = Math.max(bodyScroll, bodyOffset, htmlScroll, htmlOffset, bodyRect);
+      if (maxH > 0) {
+        setHeight(maxH + 16);
       }
     } catch {
-      // Ignore potential cross-origin restriction
+      // Ignore cross-origin error if any
     }
-  };
+  }, []);
+
+  const attachListeners = useCallback(() => {
+    updateHeight();
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc) return;
+
+      const ro = new ResizeObserver(() => {
+        updateHeight();
+      });
+      if (doc.body) ro.observe(doc.body);
+      if (doc.documentElement) ro.observe(doc.documentElement);
+
+      const images = doc.querySelectorAll("img");
+      images.forEach((img) => {
+        if (!img.complete) {
+          img.addEventListener("load", updateHeight, { once: true });
+          img.addEventListener("error", updateHeight, { once: true });
+        }
+      });
+
+      return () => {
+        ro.disconnect();
+      };
+    } catch {
+      return undefined;
+    }
+  }, [updateHeight]);
 
   useEffect(() => {
-    updateHeight();
-    const t1 = setTimeout(updateHeight, 150);
-    const t2 = setTimeout(updateHeight, 600);
+    const cleanup = attachListeners();
+    const timers = [
+      setTimeout(updateHeight, 100),
+      setTimeout(updateHeight, 300),
+      setTimeout(updateHeight, 800),
+      setTimeout(updateHeight, 1500),
+      setTimeout(updateHeight, 3000),
+    ];
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      cleanup?.();
+      timers.forEach(clearTimeout);
     };
-  }, [srcDoc]);
+  }, [srcDoc, attachListeners, updateHeight]);
 
   return (
-    <div className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-white shadow-xs">
+    <div className="mt-4 overflow-x-auto rounded-lg border border-border/70 bg-white shadow-xs">
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        onLoad={updateHeight}
+        onLoad={attachListeners}
         sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
         className="w-full border-0 block"
-        style={{ height: `${height}px`, minHeight: "80px" }}
+        style={{ height: `${height}px`, minHeight: "100px" }}
         title="Email message body"
       />
     </div>
@@ -444,23 +838,59 @@ function HtmlBody({ html }: { html: string }) {
 
 function TextBody({ text }: { text: string }) {
   return (
-    <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4 font-sans text-[14px] leading-relaxed text-foreground whitespace-pre-wrap select-text break-words">
+    <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4 font-sans text-[14px] leading-relaxed text-foreground whitespace-pre-wrap select-text wrap-break-word">
       {text}
     </div>
   );
 }
 
+const messageExpandedOverrides = new Map<string, boolean>();
+const messageViewModeOverrides = new Map<string, "html" | "text">();
+
 function ThreadMessageItem({
   message: m,
   account,
   defaultExpanded,
+  onPreview,
+  gmailUrl,
+  paneId,
 }: {
   message: MessageMeta;
   account: string;
   defaultExpanded: boolean;
+  onPreview: (attachment: ThreadAttachment) => void;
+  gmailUrl: string;
+  paneId?: string;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const [viewMode, setViewMode] = useState<"html" | "text">(m.bodyHtml ? "html" : "text");
+  const [expanded, setExpandedState] = useState(() => {
+    return messageExpandedOverrides.has(m.id) ? messageExpandedOverrides.get(m.id)! : defaultExpanded;
+  });
+
+  const setExpanded = useCallback(
+    (action: boolean | ((prev: boolean) => boolean)) => {
+      setExpandedState((prev) => {
+        const next = typeof action === "function" ? action(prev) : action;
+        messageExpandedOverrides.set(m.id, next);
+        return next;
+      });
+    },
+    [m.id],
+  );
+
+  const [viewMode, setViewModeState] = useState<"html" | "text">(() => {
+    return messageViewModeOverrides.has(m.id) ? messageViewModeOverrides.get(m.id)! : m.bodyHtml ? "html" : "text";
+  });
+
+  const setViewMode = useCallback(
+    (action: "html" | "text" | ((prev: "html" | "text") => "html" | "text")) => {
+      setViewModeState((prev) => {
+        const next = typeof action === "function" ? action(prev) : action;
+        messageViewModeOverrides.set(m.id, next);
+        return next;
+      });
+    },
+    [m.id],
+  );
 
   return (
     <li className={cn("py-3", m.unread && "border-l-2 border-l-primary pl-4")}>
@@ -517,6 +947,28 @@ function ThreadMessageItem({
               <p className="mt-4 wrap-break-word text-[14px] leading-relaxed text-secondary-foreground">
                 {cleanSnippet(m.snippet) || <span className="text-muted-foreground">(no preview)</span>}
               </p>
+            )}
+
+            {m.attachments && m.attachments.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2 pt-3 border-t border-border/50">
+                {m.attachments.map((att, idx) => {
+                  const threadAtt: ThreadAttachment = {
+                    ...att,
+                    messageId: m.id,
+                    fromName: m.from.name || m.from.email,
+                    date: m.date,
+                  };
+                  return (
+                    <AttachmentCard
+                      key={att.id ?? `${att.filename}-${idx}`}
+                      attachment={threadAtt}
+                      onPreview={onPreview}
+                      gmailUrl={gmailUrl}
+                      paneId={paneId}
+                    />
+                  );
+                })}
+              </div>
             )}
           </div>
         ) : (

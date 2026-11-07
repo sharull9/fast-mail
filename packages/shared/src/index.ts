@@ -103,6 +103,12 @@ export interface AttachmentMeta {
   size: number;
 }
 
+export interface ThreadAttachment extends AttachmentMeta {
+  messageId: string;
+  fromName: string;
+  date: number;
+}
+
 export interface MessageMeta {
   id: string;
   threadId: string;

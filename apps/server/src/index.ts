@@ -43,6 +43,34 @@ const pairingGrants = new PairingGrants();
 const redeemAttempts: number[] = [];
 let trustedOrigins = new Set<string>();
 let trustedHosts = new Set<string>();
+
+interface AttachmentTicket {
+  accountId: string;
+  messageId: string;
+  attachmentId: string;
+  expiresAt: number;
+}
+const attachmentTickets = new Map<string, AttachmentTicket>();
+
+function issueAttachmentTicket(accountId: string, messageId: string, attachmentId: string): string {
+  const token = randomBytes(24).toString("hex");
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  attachmentTickets.set(token, { accountId, messageId, attachmentId, expiresAt });
+  return token;
+}
+
+function validateAttachmentTicket(token: string, messageId: string, attachmentId: string): string | null {
+  const ticket = attachmentTickets.get(token);
+  if (!ticket) return null;
+  if (Date.now() > ticket.expiresAt) {
+    attachmentTickets.delete(token);
+    return null;
+  }
+  if (ticket.messageId !== messageId || ticket.attachmentId !== attachmentId) {
+    return null;
+  }
+  return ticket.accountId;
+}
 let descriptor!: ServerDescriptor;
 let pairBaseOrigin = "";
 
@@ -280,6 +308,48 @@ try {
       }
 
       if (!path.startsWith("/api/")) return serveStatic(path);
+
+      // Attachment download/stream: accepts either valid ticket or regular auth
+      const attachmentMatch = path.match(/^\/api\/messages\/([^/]+)\/attachments\/(.+)$/);
+      if (attachmentMatch && req.method === "GET") {
+        const messageId = decodeURIComponent(attachmentMatch[1]!);
+        const attachmentId = decodeURIComponent(attachmentMatch[2]!);
+        const ticketParam = url.searchParams.get("ticket");
+        let targetAccountId: string | null = null;
+        if (ticketParam) {
+          targetAccountId = validateAttachmentTicket(ticketParam, messageId, attachmentId);
+        }
+        if (!targetAccountId && !authorized(req)) return json({ error: "unauthorized" }, 401);
+
+        try {
+          const runtime = targetAccountId
+            ? (accounts.get(targetAccountId) ?? accounts.resolve(req))
+            : accounts.resolve(req);
+          if (!runtime.gmail) return json({ error: "Gmail client not available" }, 500);
+          const raw = await runtime.gmail.getAttachment(messageId, attachmentId);
+          const buf = Buffer.from(raw.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+          const filename = url.searchParams.get("filename") || "attachment";
+          const mimeType = url.searchParams.get("mimeType") || "application/octet-stream";
+          const download = url.searchParams.get("download") === "1" || url.searchParams.has("download");
+          const disposition = download ? "attachment" : "inline";
+          const safeFilename = filename.replace(/["\r\n]/g, "_");
+          const encodedFilename = encodeURIComponent(filename);
+
+          return new Response(buf, {
+            status: 200,
+            headers: {
+              "content-type": mimeType,
+              "content-length": String(buf.length),
+              "content-disposition": `${disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
+              "cache-control": "private, max-age=86400",
+            },
+          });
+        } catch (err) {
+          console.error("[attachment] error loading attachment:", err);
+          return json({ error: err instanceof Error ? err.message : "Failed to load attachment" }, 502);
+        }
+      }
+
       if (!authorized(req)) return json({ error: "unauthorized" }, 401);
 
       try {
@@ -313,6 +383,24 @@ try {
 
         // ---- pairing (existing auth only: Electron header or a paired browser)
         if (path === "/api/pairing-grants" && req.method === "POST") return json(issueGrant());
+
+        // ---- attachment ticket for external browser opening
+        if (path === "/api/attachment-ticket" && req.method === "POST") {
+          const b = await body<{ messageId?: string; attachmentId?: string; filename?: string; mimeType?: string }>(
+            req,
+          );
+          if (!b.messageId || !b.attachmentId) return json({ error: "messageId and attachmentId required" }, 400);
+          const accountId = req.headers.get("x-mailfast-account") ?? auth.activeId() ?? "";
+          const ticket = issueAttachmentTicket(accountId, b.messageId, b.attachmentId);
+          const params = new URLSearchParams({
+            ticket,
+            filename: b.filename || "attachment",
+            mimeType: b.mimeType || "application/octet-stream",
+          });
+          const serverOrigin = descriptor?.origin ?? `http://127.0.0.1:${server.port}`;
+          const attachmentUrl = `${serverOrigin}/api/messages/${encodeURIComponent(b.messageId)}/attachments/${encodeURIComponent(b.attachmentId)}?${params.toString()}`;
+          return json({ ticket, url: attachmentUrl });
+        }
 
         // All subscribers receive account-tagged events, including background unread changes.
         if (path === "/api/events") {

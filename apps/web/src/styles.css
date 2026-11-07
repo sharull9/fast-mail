@@ -341,8 +341,7 @@ kbd {
   background: var(--background);
 }
 .preview-pane.focused {
-  outline: 1.5px solid var(--primary);
-  outline-offset: -1.5px;
+  outline: none;
 }
 
 .drop-target-overlay {
@@ -513,14 +512,14 @@ kbd {
    -> context (snippet). Weight and color step down at each level; signals are compact tags. */
 .row {
   position: absolute;
-  inset: 0 8px auto;
+  inset: 0 0px auto;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 12px 0 16px;
   --row-border: transparent;
   border: 1px solid var(--row-border);
-  border-radius: 10px;
+  border-radius: 0px;
   cursor: pointer;
   user-select: none;
 }

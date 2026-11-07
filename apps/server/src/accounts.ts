@@ -8,7 +8,7 @@ import { Gmail } from "@/gmail.ts";
 import { SyncEngine } from "@/sync.ts";
 
 type Engine = Pick<SyncEngine, "start" | "stop" | "wake" | "status" | "ensureLabel" | "ensureThread" | "applyAction">;
-export type AccountRuntime = { store: MailStore; sync: Engine };
+export type AccountRuntime = { store: MailStore; sync: Engine; gmail?: Gmail };
 
 /** Auth owns identities; each runtime owns only one account's rebuildable mailbox. */
 export class Accounts {
@@ -20,14 +20,19 @@ export class Accounts {
     private readonly events: Events,
     private readonly dataDir: string,
     private readonly migrationsFolder?: string,
-    private readonly createEngine: (store: MailStore, id: string, events: Events) => Engine = (store, id, events) => {
+    private readonly createEngine: (store: MailStore, id: string, events: Events, gmail?: Gmail) => Engine = (
+      store,
+      id,
+      events,
+      gmail,
+    ) => {
       const scopedAuth = {
         token: () => auth.token(id),
         invalidate: () => auth.invalidate(id),
         account: () => auth.account(id),
         status: () => ({ ...auth.status(), signedIn: auth.account(id) !== null }),
       };
-      return new SyncEngine(store, new Gmail(scopedAuth), scopedAuth, events);
+      return new SyncEngine(store, gmail ?? new Gmail(scopedAuth), scopedAuth, events);
     },
   ) {
     mkdirSync(join(dataDir, "accounts"), { recursive: true });
@@ -45,14 +50,25 @@ export class Accounts {
       if (!/^[\w-]+$/.test(id)) throw new AuthError("Invalid account ID");
       const store = openMailStore({ path: this.path(id), migrationsFolder: this.migrationsFolder });
       const events = new Events(id, (event) => this.events.send(event));
-      const sync = this.createEngine(store, id, events);
-      this.runtimes.set(id, { store, sync });
+      const scopedAuth = {
+        token: () => this.auth.token(id),
+        invalidate: () => this.auth.invalidate(id),
+        account: () => this.auth.account(id),
+        status: () => ({ ...this.auth.status(), signedIn: this.auth.account(id) !== null }),
+      };
+      const gmail = new Gmail(scopedAuth);
+      const sync = this.createEngine(store, id, events, gmail);
+      this.runtimes.set(id, { store, sync, gmail });
       sync.start();
     }
   }
 
   private path(id: string) {
     return join(this.dataDir, "accounts", `${id}.sqlite`);
+  }
+
+  get(id: string): AccountRuntime | undefined {
+    return this.removing.has(id) ? undefined : this.runtimes.get(id);
   }
 
   resolve(request: Request): AccountRuntime {

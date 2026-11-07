@@ -8,6 +8,7 @@ import {
   type Pane,
 } from "@/hooks/use-preview-workspace";
 import { ThreadView } from "@/components/thread-view";
+import { AttachmentPaneView } from "@/components/attachment-pane-view";
 import { EmptyPreview } from "@/components/empty-preview";
 import { cn } from "@/lib/utils";
 
@@ -24,16 +25,11 @@ export function PreviewWorkspace({ onClose, summary }: { onClose: () => void; su
   const workspace = usePreviewWorkspace();
   const { rows } = workspace;
 
-  // Single row, single pane — no split groups needed
-  if (rows.length === 1 && rows[0].panes.length === 1) {
-    return <WorkspacePane pane={rows[0].panes[0]} summary={summary} onCloseThread={onClose} />;
-  }
-
-  // Multi-split: outer vertical group for rows, inner horizontal group for columns per row
+  // Stable Group and Panel structure prevents React unmounting existing panes when adding or closing tabs
   return (
     <Group id="mailfast.workspace-rows" orientation="vertical" className="h-full w-full min-h-0">
       {rows.map((row, rowIndex) => (
-        <Fragment key={`row-${rowIndex}-${row.panes.map((p) => p.id).join(",")}`}>
+        <Fragment key={`row-${rowIndex}`}>
           {rowIndex > 0 && (
             <Separator
               data-slot="resizable-handle"
@@ -42,34 +38,26 @@ export function PreviewWorkspace({ onClose, summary }: { onClose: () => void; su
             />
           )}
           <Panel id={`mailfast.workspace-row-panel-${rowIndex}`} defaultSize={`${100 / rows.length}%`} minSize="10%">
-            {row.panes.length === 1 ? (
-              <WorkspacePane pane={row.panes[0]} onCloseThread={onClose} summary={summary} />
-            ) : (
-              <Group
-                id={`mailfast.workspace-row-${rowIndex}`}
-                orientation="horizontal"
-                className="h-full w-full min-w-0"
-              >
-                {row.panes.map((pane, paneIndex) => (
-                  <Fragment key={pane.id}>
-                    {paneIndex > 0 && (
-                      <Separator
-                        data-slot="resizable-handle"
-                        aria-label="Resize workspace columns"
-                        className="relative z-10 w-px bg-border after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary focus-visible:bg-primary data-[separator=active]:bg-primary"
-                      />
-                    )}
-                    <Panel
-                      id={`mailfast.workspace-pane-${pane.id}`}
-                      defaultSize={`${100 / row.panes.length}%`}
-                      minSize="10%"
-                    >
-                      <WorkspacePane pane={pane} onCloseThread={onClose} summary={summary} />
-                    </Panel>
-                  </Fragment>
-                ))}
-              </Group>
-            )}
+            <Group id={`mailfast.workspace-row-${rowIndex}`} orientation="horizontal" className="h-full w-full min-w-0">
+              {row.panes.map((pane, paneIndex) => (
+                <Fragment key={pane.id}>
+                  {paneIndex > 0 && (
+                    <Separator
+                      data-slot="resizable-handle"
+                      aria-label="Resize workspace columns"
+                      className="relative z-10 w-px bg-border after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary focus-visible:bg-primary data-[separator=active]:bg-primary"
+                    />
+                  )}
+                  <Panel
+                    id={`mailfast.workspace-pane-${pane.id}`}
+                    defaultSize={`${100 / row.panes.length}%`}
+                    minSize="10%"
+                  >
+                    <WorkspacePane pane={pane} onCloseThread={onClose} summary={summary} />
+                  </Panel>
+                </Fragment>
+              ))}
+            </Group>
           </Panel>
         </Fragment>
       ))}
@@ -106,7 +94,8 @@ function getDropZone(e: React.DragEvent, element: HTMLElement, canSplitCols: boo
 
 function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseThread: () => void; summary?: string }) {
   const workspace = usePreviewWorkspace();
-  const isFocused = workspace.focusedPaneId === pane.id;
+  const isMultiPane = workspace.rows.length > 1 || (workspace.rows[0]?.panes.length ?? 0) > 1;
+  const isFocused = isMultiPane && workspace.focusedPaneId === pane.id;
   const [dropZone, setDropZone] = useState<DropZone | null>(null);
   const dragCounter = useRef(0);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -143,8 +132,20 @@ function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseTh
     const zone = dropZone || "center";
     setDropZone(null);
 
-    const threadId = e.dataTransfer.getData("application/mailfast-thread") || e.dataTransfer.getData("text/plain");
+    const attachmentRaw = e.dataTransfer.getData("application/mailfast-attachment");
     const sourcePaneId = e.dataTransfer.getData("application/mailfast-source-pane") || undefined;
+
+    if (attachmentRaw) {
+      try {
+        const attachment = JSON.parse(attachmentRaw);
+        workspace.dropAttachment(pane.id, attachment, zone, sourcePaneId);
+        return;
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+
+    const threadId = e.dataTransfer.getData("application/mailfast-thread") || e.dataTransfer.getData("text/plain");
 
     if (threadId) {
       workspace.dropThread(pane.id, threadId, zone, sourcePaneId);
@@ -156,6 +157,7 @@ function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseTh
       workspace.closePane(pane.id);
     } else {
       workspace.setThreadId(pane.id, null);
+      workspace.setAttachment(pane.id, null);
       if (isFocused) onCloseThread();
     }
   };
@@ -164,15 +166,23 @@ function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseTh
     // biome-ignore lint/a11y/useKeyWithClickEvents: focus on click is intentional, pane is not a button
     <div
       ref={paneRef}
-      className={cn("preview-pane", isFocused && "focused", !pane.threadId && "is-empty")}
+      className={cn("preview-pane", isFocused && "focused", !pane.threadId && !pane.attachment && "is-empty")}
       onClick={() => workspace.focusPane(pane.id)}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {isFocused && (
+        <div
+          data-slot="pane-focus-border"
+          className="pointer-events-none absolute inset-0 z-20 border border-primary/30"
+        />
+      )}
       {dropZone && <div data-slot="drop-overlay" className={cn("drop-target-overlay", `drop-target-${dropZone}`)} />}
-      {pane.threadId ? (
+      {pane.attachment ? (
+        <AttachmentPaneView attachment={pane.attachment} paneId={pane.id} onClose={handleClose} />
+      ) : pane.threadId ? (
         <ThreadView threadId={pane.threadId} paneId={pane.id} onClose={handleClose} />
       ) : (
         <EmptyPreview summary={summary} />

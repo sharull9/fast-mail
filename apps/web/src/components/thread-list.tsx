@@ -444,8 +444,8 @@ export function ThreadList({
 }
 
 // Card heights, including the 4px gutter between cards (2px above and below each card).
-const ROW_WIDE = 76;
-const ROW_NARROW = 96;
+const ROW_WIDE = 70;
+const ROW_NARROW = 90;
 const ROW_GUTTER = 2;
 
 const Row = memo(function Row({
@@ -562,7 +562,7 @@ const Row = memo(function Row({
             {/* Level 1: who + when, with signals as compact tags. */}
             <div className="row-head">
               <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
-              <span className="row-meta group-hover:-translate-y-2 transition-all">
+              <span className="row-meta translate-y-0 group-[:not(.narrow)]:-translate-y-2 transition-all">
                 {t.important && showImportant && (
                   <Tooltip>
                     <TooltipTrigger asChild>

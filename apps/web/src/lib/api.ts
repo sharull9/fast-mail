@@ -162,6 +162,8 @@ export const api = {
     call<unknown>("/threads/actions", { json: { threadIds, action }, headers: accountHeaders(accountId) }),
   prefetch: (hint: { threadIds?: string[]; labelIds?: string[] }) =>
     call<{ ok: true }>("/prefetch", { json: hint }).catch(() => undefined),
+  attachmentTicket: (params: { messageId: string; attachmentId: string; filename?: string; mimeType?: string }) =>
+    call<{ ticket: string; url: string }>("/attachment-ticket", { json: params }),
 };
 
 /** True when running inside Electron's preload bridge, not a plain browser tab. */
@@ -174,6 +176,70 @@ export function openExternal(url: string) {
   const bridge = (window as { mailfast?: { openExternal(url: string): void } }).mailfast;
   if (bridge) bridge.openExternal(url);
   else window.open(url, "_blank", "noopener");
+}
+
+export function getAttachmentUrl(
+  messageId: string,
+  attachmentId: string,
+  filename?: string,
+  mimeType?: string,
+): string {
+  const params = new URLSearchParams();
+  if (filename) params.set("filename", filename);
+  if (mimeType) params.set("mimeType", mimeType);
+  const q = params.toString() ? `?${params}` : "";
+  return `/api/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}${q}`;
+}
+
+export async function fetchAttachmentBlob(
+  messageId: string,
+  attachmentId: string,
+  filename?: string,
+  mimeType?: string,
+): Promise<Blob> {
+  const path = `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`;
+  const params = new URLSearchParams();
+  if (filename) params.set("filename", filename);
+  if (mimeType) params.set("mimeType", mimeType);
+  const q = params.toString() ? `?${params}` : "";
+  const res = await request(`${path}${q}`);
+  if (!res.ok) {
+    await throwResponseError(res);
+  }
+  return res.blob();
+}
+
+export async function downloadAttachment(messageId: string, attachmentId: string, filename: string, mimeType?: string) {
+  const blob = await fetchAttachmentBlob(messageId, attachmentId, filename, mimeType);
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename || "attachment";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+}
+
+export async function openAttachmentInBrowser(
+  messageId: string,
+  attachmentId: string,
+  filename: string,
+  mimeType?: string,
+) {
+  if (isDesktopApp()) {
+    try {
+      const res = await api.attachmentTicket({ messageId, attachmentId, filename, mimeType });
+      openExternal(res.url);
+    } catch {
+      const blob = await fetchAttachmentBlob(messageId, attachmentId, filename, mimeType);
+      const blobUrl = URL.createObjectURL(blob);
+      openExternal(blobUrl);
+    }
+  } else {
+    const url = getAttachmentUrl(messageId, attachmentId, filename, mimeType);
+    window.open(url, "_blank", "noopener");
+  }
 }
 
 function accountHeaders(id: string | null): HeadersInit {

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { ThreadAttachment } from "@mailfast/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -7,6 +8,7 @@ export type PaneId = string;
 export interface Pane {
   id: PaneId;
   threadId: string | null;
+  attachment?: ThreadAttachment | null;
 }
 
 export interface WorkspaceLayout {
@@ -26,6 +28,8 @@ export interface WorkspaceActions {
   focusPane: (paneId: PaneId) => void;
   /** Assign a thread to a pane. */
   setThreadId: (paneId: PaneId, threadId: string | null) => void;
+  /** Assign an attachment to a pane. */
+  setAttachment: (paneId: PaneId, attachment: ThreadAttachment | null) => void;
   /** Reset to a single empty pane. */
   resetWorkspace: () => void;
   /** Whether a split-right is possible for the given pane. */
@@ -36,6 +40,8 @@ export interface WorkspaceActions {
   canClose: () => boolean;
   /** Drop a thread into a pane or split space (VS Code style). */
   dropThread: (targetPaneId: PaneId, threadId: string, zone: DropZone, sourcePaneId?: PaneId) => void;
+  /** Drop an attachment into a pane or split space. */
+  dropAttachment: (targetPaneId: PaneId, attachment: ThreadAttachment, zone: DropZone, sourcePaneId?: PaneId) => void;
 }
 
 export type DropZone = "left" | "right" | "top" | "bottom" | "center";
@@ -65,8 +71,8 @@ function paneId(): PaneId {
   return `pane-${Date.now()}-${++counter}`;
 }
 
-function createPane(threadId: string | null = null): Pane {
-  return { id: paneId(), threadId };
+function createPane(threadId: string | null = null, attachment: ThreadAttachment | null = null): Pane {
+  return { id: paneId(), threadId, attachment };
 }
 
 function defaultLayout(): WorkspaceLayout {
@@ -214,8 +220,24 @@ export function usePreviewWorkspaceState(): WorkspaceState {
         if (!loc) return prev;
         const row = prev.rows[loc.rowIndex];
         const pane = row.panes[loc.paneIndex];
-        if (pane.threadId === threadId) return prev;
-        const newPanes = row.panes.map((p, i) => (i === loc.paneIndex ? { ...p, threadId } : p));
+        if (pane.threadId === threadId && !pane.attachment) return prev;
+        const newPanes = row.panes.map((p, i) => (i === loc.paneIndex ? { ...p, threadId, attachment: null } : p));
+        const newRows = prev.rows.map((r, i) => (i === loc.rowIndex ? { panes: newPanes } : r));
+        return { ...prev, rows: newRows };
+      });
+    },
+    [update],
+  );
+
+  const setAttachment = useCallback(
+    (id: PaneId, attachment: ThreadAttachment | null) => {
+      update((prev) => {
+        const loc = findPane(prev, id);
+        if (!loc) return prev;
+        const row = prev.rows[loc.rowIndex];
+        const pane = row.panes[loc.paneIndex];
+        if (pane.attachment === attachment && !pane.threadId) return prev;
+        const newPanes = row.panes.map((p, i) => (i === loc.paneIndex ? { ...p, attachment, threadId: null } : p));
         const newRows = prev.rows.map((r, i) => (i === loc.rowIndex ? { panes: newPanes } : r));
         return { ...prev, rows: newRows };
       });
@@ -253,7 +275,7 @@ export function usePreviewWorkspaceState(): WorkspaceState {
           let newRows = prev.rows.map((r, ri) =>
             ri === loc.rowIndex
               ? {
-                  panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId } : p)),
+                  panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId, attachment: null } : p)),
                 }
               : r,
           );
@@ -283,7 +305,7 @@ export function usePreviewWorkspaceState(): WorkspaceState {
               rows: prev.rows.map((r, ri) =>
                 ri === loc.rowIndex
                   ? {
-                      panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId } : p)),
+                      panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId, attachment: null } : p)),
                     }
                   : r,
               ),
@@ -291,7 +313,7 @@ export function usePreviewWorkspaceState(): WorkspaceState {
             };
           }
 
-          const newPane = createPane(threadId);
+          const newPane = createPane(threadId, null);
           const insertIndex = zone === "left" ? loc.paneIndex : loc.paneIndex + 1;
           const newPanes = [...row.panes];
           newPanes.splice(insertIndex, 0, newPane);
@@ -322,7 +344,7 @@ export function usePreviewWorkspaceState(): WorkspaceState {
               rows: prev.rows.map((r, ri) =>
                 ri === loc.rowIndex
                   ? {
-                      panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId } : p)),
+                      panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId, attachment: null } : p)),
                     }
                   : r,
               ),
@@ -330,7 +352,121 @@ export function usePreviewWorkspaceState(): WorkspaceState {
             };
           }
 
-          const newPane = createPane(threadId);
+          const newPane = createPane(threadId, null);
+          const insertRowIndex = zone === "top" ? loc.rowIndex : loc.rowIndex + 1;
+          const newRows = [...prev.rows];
+          newRows.splice(insertRowIndex, 0, { panes: [newPane] });
+
+          let finalRows = newRows;
+          if (sourcePaneId && sourcePaneId !== newPane.id && totalPanes(prev) > 1) {
+            const srcLoc = findPane({ rows: finalRows, focusedPaneId: "" }, sourcePaneId);
+            if (srcLoc) {
+              const srcRow = finalRows[srcLoc.rowIndex];
+              const filtered = srcRow.panes.filter((p) => p.id !== sourcePaneId);
+              if (filtered.length === 0) {
+                finalRows = finalRows.filter((_, i) => i !== srcLoc.rowIndex);
+              } else {
+                finalRows = finalRows.map((r, i) => (i === srcLoc.rowIndex ? { panes: filtered } : r));
+              }
+            }
+          }
+
+          return { rows: finalRows, focusedPaneId: newPane.id };
+        }
+
+        return prev;
+      });
+    },
+    [update],
+  );
+
+  const dropAttachment = useCallback(
+    (targetPaneId: PaneId, attachment: ThreadAttachment, zone: DropZone, sourcePaneId?: PaneId) => {
+      update((prev) => {
+        const loc = findPane(prev, targetPaneId);
+        if (!loc) return prev;
+
+        // Center drop: replaces content in this pane
+        if (zone === "center") {
+          let newRows = prev.rows.map((r, ri) =>
+            ri === loc.rowIndex
+              ? {
+                  panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId: null, attachment } : p)),
+                }
+              : r,
+          );
+
+          if (sourcePaneId && sourcePaneId !== targetPaneId && totalPanes(prev) > 1) {
+            const srcLoc = findPane({ rows: newRows, focusedPaneId: "" }, sourcePaneId);
+            if (srcLoc) {
+              const srcRow = newRows[srcLoc.rowIndex];
+              const filtered = srcRow.panes.filter((p) => p.id !== sourcePaneId);
+              if (filtered.length === 0) {
+                newRows = newRows.filter((_, i) => i !== srcLoc.rowIndex);
+              } else {
+                newRows = newRows.map((r, i) => (i === srcLoc.rowIndex ? { panes: filtered } : r));
+              }
+            }
+          }
+
+          return { rows: newRows, focusedPaneId: targetPaneId };
+        }
+
+        // Left / Right split
+        if (zone === "left" || zone === "right") {
+          const row = prev.rows[loc.rowIndex];
+          if (row.panes.length >= MAX_COLUMNS) {
+            return {
+              rows: prev.rows.map((r, ri) =>
+                ri === loc.rowIndex
+                  ? {
+                      panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId: null, attachment } : p)),
+                    }
+                  : r,
+              ),
+              focusedPaneId: targetPaneId,
+            };
+          }
+
+          const newPane = createPane(null, attachment);
+          const insertIndex = zone === "left" ? loc.paneIndex : loc.paneIndex + 1;
+          const newPanes = [...row.panes];
+          newPanes.splice(insertIndex, 0, newPane);
+
+          let newRows = prev.rows.map((r, i) => (i === loc.rowIndex ? { panes: newPanes } : r));
+
+          if (sourcePaneId && sourcePaneId !== newPane.id && totalPanes(prev) > 1) {
+            const srcLoc = findPane({ rows: newRows, focusedPaneId: "" }, sourcePaneId);
+            if (srcLoc) {
+              const srcRow = newRows[srcLoc.rowIndex];
+              const filtered = srcRow.panes.filter((p) => p.id !== sourcePaneId);
+              if (filtered.length === 0) {
+                newRows = newRows.filter((_, i) => i !== srcLoc.rowIndex);
+              } else {
+                newRows = newRows.map((r, i) => (i === srcLoc.rowIndex ? { panes: filtered } : r));
+              }
+            }
+          }
+
+          return { rows: newRows, focusedPaneId: newPane.id };
+        }
+
+        // Top / Bottom split
+        if (zone === "top" || zone === "bottom") {
+          if (prev.rows.length >= MAX_ROWS) {
+            return {
+              rows: prev.rows.map((r, ri) =>
+                ri === loc.rowIndex
+                  ? {
+                      panes: r.panes.map((p) => (p.id === targetPaneId ? { ...p, threadId: null, attachment } : p)),
+                    }
+                  : r,
+              ),
+              focusedPaneId: targetPaneId,
+            };
+          }
+
+          const newPane = createPane(null, attachment);
           const insertRowIndex = zone === "top" ? loc.rowIndex : loc.rowIndex + 1;
           const newRows = [...prev.rows];
           newRows.splice(insertRowIndex, 0, { panes: [newPane] });
@@ -366,11 +502,13 @@ export function usePreviewWorkspaceState(): WorkspaceState {
       closePane,
       focusPane,
       setThreadId,
+      setAttachment,
       resetWorkspace,
       canSplitRight,
       canSplitDown,
       canClose,
       dropThread,
+      dropAttachment,
     }),
     [
       layout,
@@ -379,11 +517,13 @@ export function usePreviewWorkspaceState(): WorkspaceState {
       closePane,
       focusPane,
       setThreadId,
+      setAttachment,
       resetWorkspace,
       canSplitRight,
       canSplitDown,
       canClose,
       dropThread,
+      dropAttachment,
     ],
   );
 }

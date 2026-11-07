@@ -229,7 +229,10 @@ function openInBrowser(target: unknown) {
   const pairOrigin = isDev ? new URL(DEV_URL).origin : apiOrigin;
   const isPairUrl =
     pairOrigin !== "" && url.origin === pairOrigin && url.pathname === "/" && url.hash.startsWith("#pair=");
-  if (url.protocol !== "https:" && !isSignIn && !isPairUrl)
+  const isAttachment =
+    (apiOrigin !== "" && url.origin === apiOrigin && url.pathname.includes("/attachments/")) ||
+    (pairOrigin !== "" && url.origin === pairOrigin && url.pathname.includes("/attachments/"));
+  if (url.protocol !== "https:" && !isSignIn && !isPairUrl && !isAttachment)
     return console.warn(`[open-external] rejected ${url.origin}${url.pathname}`);
   shell.openExternal(url.toString()).catch((err: unknown) => console.error("[open-external] failed:", err));
 }
