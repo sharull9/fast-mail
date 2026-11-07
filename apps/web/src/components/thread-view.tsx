@@ -884,7 +884,71 @@ function HtmlBody({ html }: { html: string }) {
       max-width: 100%;
     }
     table {
+      border-collapse: collapse;
+      width: 100%;
       max-width: 100%;
+      margin: 12px 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th {
+      border: 1px solid #e2e8f0;
+      background-color: #f8fafc;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    td {
+      border: 1px solid #e2e8f0;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .google-smart-chip {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 2px 8px 2px 6px !important;
+      border-radius: 6px !important;
+      background-color: #f1f3f4 !important;
+      color: #202124 !important;
+      text-decoration: none !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      vertical-align: middle !important;
+      line-height: 20px !important;
+      border: 1px solid #dadce0 !important;
+      margin: 0 2px !important;
+    }
+    .google-smart-chip:hover {
+      background-color: #e8eaed !important;
+    }
+    .date-time-chip {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      padding: 2px 7px !important;
+      border-radius: 5px !important;
+      background-color: #f1f3f4 !important;
+      color: #3c4043 !important;
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      border: 1px solid #dadce0 !important;
+      margin: 0 2px !important;
+      vertical-align: middle !important;
+    }
+    .mention {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 2px !important;
+      padding: 1px 6px !important;
+      border-radius: 4px !important;
+      background-color: rgba(37, 99, 235, 0.1) !important;
+      color: #2563eb !important;
+      font-weight: 500 !important;
+      font-size: 13px !important;
+      text-decoration: none !important;
     }
     a {
       color: #2563eb;

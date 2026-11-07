@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState, forwardRef } from "react";
+import { useCallback, useEffect, useState, forwardRef, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
+import { Mention } from "@tiptap/extension-mention";
+import { mergeAttributes } from "@tiptap/core";
 import {
   Bold,
   Italic,
@@ -22,18 +25,34 @@ import {
   Undo2,
   Redo2,
   RemoveFormatting,
+  AtSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Contact } from "@mailfast/shared";
+
+import {
+  GoogleChipExtension,
+  detectGoogleDocType,
+  getDefaultGoogleDocTitle,
+  type GoogleDocType,
+} from "./extensions/google-chip-extension";
+import { DateTimeExtension } from "./extensions/date-time-extension";
+import { createMentionSuggestion } from "./extensions/mention-suggestion";
+import { TableControls } from "./table-controls";
+import { DateTimePickerPopover } from "./date-time-picker-popover";
+import { GoogleChipDialog } from "./google-chip-dialog";
+import { SlashCommandExtension } from "./extensions/slash-command-extension";
 
 interface RichTextEditorProps {
   content: string;
   onChange: (html: string) => void;
   onSendShortcut?: () => void;
   onFilesDrop?: (files: File[]) => void;
+  onUserTagged?: (contact: Contact) => void;
   placeholder?: string;
   minHeight?: string;
   className?: string;
@@ -45,11 +64,14 @@ export function RichTextEditor({
   onChange,
   onSendShortcut,
   onFilesDrop,
-  placeholder = "Write your message...",
+  onUserTagged,
+  placeholder = "Write a message, type '/' for commands, or '@' to tag...",
   minHeight = "160px",
   className,
   autoFocus = false,
 }: RichTextEditorProps) {
+  const mentionSuggestion = useMemo(() => createMentionSuggestion(onUserTagged), [onUserTagged]);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -64,6 +86,46 @@ export function RichTextEditor({
           class: "text-primary underline underline-offset-2",
         },
       }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: "border-collapse border border-border/70 my-2 w-full",
+        },
+      }),
+      TableRow,
+      TableHeader.configure({
+        HTMLAttributes: {
+          class: "border border-border/70 bg-muted/60 p-2 text-left font-semibold text-xs",
+        },
+      }),
+      TableCell.configure({
+        HTMLAttributes: {
+          class: "border border-border/70 p-2 text-xs",
+        },
+      }),
+      Mention.configure({
+        HTMLAttributes: {
+          class: "mention",
+        },
+        suggestion: mentionSuggestion,
+        renderHTML({ options, node }) {
+          return [
+            "span",
+            mergeAttributes(options.HTMLAttributes, {
+              "data-type": "mention",
+              "data-id": node.attrs.id,
+              "data-label": node.attrs.label,
+              class: "mention",
+              style:
+                "display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 4px; background-color: rgba(37, 99, 235, 0.1); color: #2563eb; font-weight: 500; font-size: 13px; text-decoration: none;",
+            }),
+            `@${node.attrs.label ?? node.attrs.id}`,
+          ];
+        },
+      }),
+      DateTimeExtension,
+      GoogleChipExtension,
+      SlashCommandExtension,
       Placeholder.configure({
         placeholder,
         emptyEditorClass:
@@ -88,6 +150,11 @@ export function RichTextEditor({
           "[&_blockquote]:border-l-2 [&_blockquote]:border-primary/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-1 [&_blockquote]:text-muted-foreground",
           "[&_pre]:bg-muted/80 [&_pre]:rounded-md [&_pre]:p-2 [&_pre]:my-1 [&_pre]:font-mono [&_pre]:text-xs [&_pre]:overflow-x-auto",
           "[&_code]:bg-muted/80 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-xs",
+          "[&_table]:border-collapse [&_table]:w-full [&_table]:my-2 [&_table]:border [&_table]:border-border/70 [&_table]:rounded-md [&_table]:overflow-hidden",
+          "[&_th]:border [&_th]:border-border/70 [&_th]:bg-muted/60 [&_th]:p-2 [&_th]:text-left [&_th]:font-semibold [&_th]:text-xs [&_th]:min-w-17.5",
+          "[&_td]:border [&_td]:border-border/70 [&_td]:p-2 [&_td]:text-xs [&_td]:min-w-17.5",
+          "[&_.selectedCell]:bg-primary/10",
+          "[&_.mention]:bg-primary/10 [&_.mention]:text-primary [&_.mention]:px-1.5 [&_.mention]:py-0.5 [&_.mention]:rounded [&_.mention]:font-medium [&_.mention]:text-xs [&_.mention]:inline-flex [&_.mention]:items-center",
         ),
         style: `min-height: ${minHeight};`,
       },
@@ -105,6 +172,25 @@ export function RichTextEditor({
           const files = Array.from(event.dataTransfer.files);
           onFilesDrop?.(files);
           return true;
+        }
+        return false;
+      },
+      handlePaste: (view, event) => {
+        const text = event.clipboardData?.getData("text/plain")?.trim();
+        if (text && /^https?:\/\/(docs|drive)\.google\.com\/[^\s]+$/i.test(text)) {
+          const type = detectGoogleDocType(text);
+          if (type && view.state.schema.nodes.googleChip) {
+            event.preventDefault();
+            const title = getDefaultGoogleDocTitle(type, text);
+            const node = view.state.schema.nodes.googleChip.create({
+              href: text,
+              title,
+              type,
+            });
+            const tr = view.state.tr.replaceSelectionWith(node);
+            view.dispatch(tr);
+            return true;
+          }
         }
         return false;
       },
@@ -137,10 +223,66 @@ export function RichTextEditor({
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
     } else {
       const formatted = /^https?:\/\//i.test(trimmed) || trimmed.startsWith("mailto:") ? trimmed : `https://${trimmed}`;
-      editor.chain().focus().extendMarkRange("link").setLink({ href: formatted }).run();
+      const docType = detectGoogleDocType(formatted);
+      if (docType && editor.schema.nodes.googleChip) {
+        // Automatically insert as a Google Smart Chip!
+        const title = getDefaultGoogleDocTitle(docType, formatted);
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "googleChip",
+            attrs: {
+              href: formatted,
+              title,
+              type: docType,
+            },
+          })
+          .run();
+      } else {
+        editor.chain().focus().extendMarkRange("link").setLink({ href: formatted }).run();
+      }
     }
     setLinkPopoverOpen(false);
   }, [editor, linkUrl]);
+
+  const handleInsertDateTime = useCallback(
+    (data: { date: string; label: string; hasTime: boolean }) => {
+      if (!editor) return;
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "dateTimeChip",
+          attrs: {
+            date: data.date,
+            label: data.label,
+            hasTime: data.hasTime,
+          },
+        })
+        .run();
+    },
+    [editor],
+  );
+
+  const handleInsertGoogleChip = useCallback(
+    (data: { href: string; title: string; type: GoogleDocType }) => {
+      if (!editor) return;
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "googleChip",
+          attrs: {
+            href: data.href,
+            title: data.title,
+            type: data.type,
+          },
+        })
+        .run();
+    },
+    [editor],
+  );
 
   if (!editor) {
     return null;
@@ -248,6 +390,26 @@ export function RichTextEditor({
           active={editor.isActive("codeBlock")}
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         />
+
+        <div className="mx-1 h-3.5 w-px shrink-0 bg-border/60 self-center" />
+
+        {/* User Tagging Button */}
+        <ToolbarButton
+          icon={<AtSign className="size-3.5 text-primary" />}
+          label="Tag User (@)"
+          onClick={() => {
+            editor.chain().focus().insertContent("@").run();
+          }}
+        />
+
+        {/* Date & Time Picker */}
+        <DateTimePickerPopover onInsert={handleInsertDateTime} />
+
+        {/* Table Controls */}
+        <TableControls editor={editor} />
+
+        {/* Google Workspace Smart Chip */}
+        <GoogleChipDialog onInsert={handleInsertGoogleChip} />
 
         <div className="mx-1 h-3.5 w-px shrink-0 bg-border/60 self-center" />
 

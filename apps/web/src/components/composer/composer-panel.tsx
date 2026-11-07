@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { useComposer, type ComposerAttachment } from "@/components/composer/composer-context";
 import { RecipientField } from "@/components/composer/recipient-field";
 import { RichTextEditor } from "@/components/composer/rich-text-editor";
+import type { Contact } from "@mailfast/shared";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -206,6 +207,26 @@ export function ComposerPanel({
     [updateDraft],
   );
 
+  const handleUserTagged = useCallback(
+    (contact: Contact) => {
+      if (!contact.email) return;
+      const email = contact.email.toLowerCase();
+      const inTo = draft.to.some((r) => r.toLowerCase().includes(email));
+      const inCc = draft.cc.some((r) => r.toLowerCase().includes(email));
+      const inBcc = draft.bcc.some((r) => r.toLowerCase().includes(email));
+
+      if (!inTo && !inCc && !inBcc) {
+        if (draft.to.length === 0) {
+          updateDraft({ to: [contact.email] });
+        } else {
+          updateDraft({ cc: [...draft.cc, contact.email] });
+          setShowCc(true);
+        }
+      }
+    },
+    [draft.to, draft.cc, draft.bcc, updateDraft],
+  );
+
   const [confirmAction, setConfirmAction] = useState<"discard" | "clear" | null>(null);
 
   const handleDiscard = useCallback(() => {
@@ -269,7 +290,7 @@ export function ComposerPanel({
   }
 
   const isActive = activeComposerId ? activeComposerId === composerId : floatingIndex === 0;
-  const zIndex = isMaximized ? 60 : isActive ? 55 : 40 + Math.max(0, 10 - floatingIndex);
+  const zIndex = isMaximized ? 45 : isActive ? 40 : 30 + Math.max(0, 10 - floatingIndex);
   const dockedRight = getDockedRight(floatingIndex, totalFloating, size.width, isMinimized);
 
   // Minimized state in floating mode (solid opaque background, no hover transparency)
@@ -608,6 +629,7 @@ export function ComposerPanel({
           onChange={(bodyHtml) => updateDraft({ bodyHtml })}
           onSendShortcut={() => void sendMessage()}
           onFilesDrop={handleFiles}
+          onUserTagged={handleUserTagged}
           minHeight="140px"
           className="flex-1"
           autoFocus={draft.to.length > 0}

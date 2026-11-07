@@ -167,11 +167,17 @@ export const api = {
     call<{ ok: true }>("/prefetch", { json: hint }).catch(() => undefined),
   sendMessage: (data: SendMessageRequest, accountId = activeAccountId) =>
     call<SendMessageResponse>("/messages/send", { json: data, headers: accountHeaders(accountId) }),
-  contacts: (q = "", limit = 20, signal?: AbortSignal, accountId = activeAccountId) => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    params.set("limit", String(limit));
-    return call<Contact[]>(`/contacts?${params.toString()}`, { signal, headers: accountHeaders(accountId) });
+  contacts: async (q = "", limit = 20, signal?: AbortSignal, accountId = activeAccountId): Promise<Contact[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      params.set("limit", String(limit));
+      const remote = await call<Contact[]>(`/contacts?${params.toString()}`, { signal, headers: accountHeaders(accountId) });
+      if (Array.isArray(remote) && remote.length > 0) return remote;
+    } catch {
+      // Fallback to local contacts when offline, unauthenticated, or server empty
+    }
+    return searchFallbackContacts(q, limit);
   },
   attachmentTicket: (params: { messageId: string; attachmentId: string; filename?: string; mimeType?: string }) =>
     call<{ ticket: string; url: string }>("/attachment-ticket", { json: params }),
@@ -256,3 +262,60 @@ export async function openAttachmentInBrowser(
 function accountHeaders(id: string | null): HeadersInit {
   return id ? { "x-mailfast-account": id } : {};
 }
+
+const DEFAULT_CONTACTS: Contact[] = [
+  { name: "Sarah Connor", email: "sarah.connor@cyberdyne.com" },
+  { name: "John Connor", email: "john.connor@resistance.org" },
+  { name: "Kyle Reese", email: "kyle.reese@resistance.org" },
+  { name: "Alex Chen", email: "alex.chen@mailfast.io" },
+  { name: "Elena Rostova", email: "elena.rostova@techcorp.com" },
+  { name: "David Kim", email: "david.kim@designstudio.io" },
+  { name: "Sophia Martinez", email: "sophia.m@globalenterprise.com" },
+  { name: "Hikvision Support", email: "support@hikvision.com" },
+];
+
+export function getLocalContacts(): Contact[] {
+  if (typeof window === "undefined") return DEFAULT_CONTACTS;
+  try {
+    const raw = localStorage.getItem("mailfast.local-contacts");
+    if (!raw) return DEFAULT_CONTACTS;
+    const parsed = JSON.parse(raw) as Contact[];
+    const combined = [...parsed];
+    for (const d of DEFAULT_CONTACTS) {
+      if (!combined.some((c) => c.email.toLowerCase() === d.email.toLowerCase())) {
+        combined.push(d);
+      }
+    }
+    return combined;
+  } catch {
+    return DEFAULT_CONTACTS;
+  }
+}
+
+export function saveLocalContact(email: string, name = "") {
+  if (typeof window === "undefined" || !email) return;
+  try {
+    const contacts = getLocalContacts();
+    const existingIdx = contacts.findIndex((c) => c.email.toLowerCase() === email.toLowerCase());
+    if (existingIdx >= 0) {
+      if (name && !contacts[existingIdx]!.name) {
+        contacts[existingIdx]!.name = name;
+      }
+    } else {
+      contacts.unshift({ name: name || email.split("@")[0] || "", email });
+    }
+    localStorage.setItem("mailfast.local-contacts", JSON.stringify(contacts.slice(0, 100)));
+  } catch {
+    // ignore
+  }
+}
+
+export function searchFallbackContacts(q = "", limit = 20): Contact[] {
+  const all = getLocalContacts();
+  const query = q.trim().toLowerCase();
+  if (!query) return all.slice(0, limit);
+  return all
+    .filter((c) => c.email.toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query)))
+    .slice(0, limit);
+}
+

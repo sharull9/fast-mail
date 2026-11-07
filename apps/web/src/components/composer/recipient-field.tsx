@@ -2,9 +2,9 @@ import { useState, useRef, useEffect, type KeyboardEvent, type ClipboardEvent } 
 import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { MailAvatar } from "@/components/mail-avatar";
-import { api } from "@/lib/api";
+import { api, saveLocalContact } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { Contact } from "@mailfast/shared";
 
 interface RecipientFieldProps {
@@ -38,12 +38,6 @@ export function RecipientField({
 
   useEffect(() => {
     const q = inputValue.trim();
-    if (!q) {
-      setSuggestions([]);
-      setSelectedEmail("");
-      setOpen(false);
-      return;
-    }
     let active = true;
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -55,10 +49,14 @@ export function RecipientField({
             const available = res.filter((c) => !recipients.includes(c.email));
             if (available.length > 0) {
               setSelectedEmail(available[0]!.email);
-              setOpen(true);
+              if (q) {
+                setOpen(true);
+              }
             } else {
               setSelectedEmail("");
-              setOpen(false);
+              if (q) {
+                setOpen(false);
+              }
             }
           }
         })
@@ -68,7 +66,7 @@ export function RecipientField({
             setOpen(false);
           }
         });
-    }, 100);
+    }, 40);
 
     return () => {
       active = false;
@@ -78,13 +76,6 @@ export function RecipientField({
   }, [inputValue, recipients]);
 
   const filteredSuggestions = suggestions.filter((c) => !recipients.includes(c.email));
-
-  useEffect(() => {
-    if (selectedEmail) {
-      const el = document.querySelector(`[cmdk-item][data-value="${selectedEmail}"]`);
-      el?.scrollIntoView({ block: "nearest" });
-    }
-  }, [selectedEmail]);
 
   const addRecipient = (raw: string) => {
     const cleaned = raw.trim().replace(/^[,;\s]+|[,;\s]+$/g, "");
@@ -99,6 +90,7 @@ export function RecipientField({
     for (const item of items) {
       if (!next.includes(item)) {
         next.push(item);
+        saveLocalContact(item);
       }
     }
     onChange(next);
@@ -113,6 +105,7 @@ export function RecipientField({
   };
 
   const handleSelectContact = (contact: Contact) => {
+    saveLocalContact(contact.email, contact.name);
     addRecipient(contact.email);
     inputRef.current?.focus();
   };
@@ -186,7 +179,7 @@ export function RecipientField({
                 <span className="truncate">{email}</span>
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-foreground focus:outline-none p-0.5 rounded-sm hover:bg-muted"
+                  className="text-muted-foreground hover:text-foreground focus:outline-none p-0.5 rounded-xs hover:bg-muted"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeRecipient(idx);
@@ -200,13 +193,19 @@ export function RecipientField({
 
             <input
               ref={inputRef}
-              type="email"
+              type="text"
               value={inputValue}
               autoFocus={autoFocus}
               placeholder={recipients.length === 0 ? (placeholder ?? "Add recipients...") : ""}
               className="flex-1 min-w-28 bg-transparent py-0.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
               onFocus={() => {
-                if (filteredSuggestions.length > 0) setOpen(true);
+                if (inputValue.trim() && filteredSuggestions.length > 0) {
+                  setOpen(true);
+                } else if (!inputValue.trim()) {
+                  void api.contacts("", 10).then((res) => {
+                    setSuggestions(res);
+                  });
+                }
               }}
               onBlur={() => {
                 setTimeout(() => {
@@ -215,7 +214,12 @@ export function RecipientField({
                   }
                 }, 150);
               }}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => {
+                setInputValue(e.target.value);
+                if (e.target.value.trim()) {
+                  setOpen(true);
+                }
+              }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
             />
@@ -223,53 +227,47 @@ export function RecipientField({
         </PopoverAnchor>
 
         <PopoverContent
-          className="w-80 p-0 border border-border bg-popover shadow-2xl rounded-lg overflow-hidden"
+          className="w-80 p-1 border border-border bg-popover shadow-2xl rounded-lg overflow-hidden z-100"
           align="start"
           sideOffset={6}
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
-          onMouseDown={(e) => e.preventDefault()}
         >
-          <Command
-            shouldFilter={false}
-            value={selectedEmail}
-            onValueChange={setSelectedEmail}
-            className="bg-transparent"
-          >
-            <CommandList className="max-h-56 p-1 scrollbar-thin">
-              {filteredSuggestions.length === 0 ? (
-                <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">
-                  No contacts found
-                </CommandEmpty>
-              ) : (
-                <CommandGroup
-                  heading="Contacts"
-                  className="**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1 **:[[cmdk-group-heading]]:text-[10px]"
+          <div className="max-h-56 overflow-y-auto p-1 flex flex-col gap-0.5 scrollbar-thin">
+            <div className="px-2 py-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Suggested contacts
+            </div>
+            {filteredSuggestions.map((contact) => {
+              const isSelected = contact.email === selectedEmail;
+              return (
+                <button
+                  key={contact.email}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectContact(contact);
+                  }}
+                  onMouseEnter={() => setSelectedEmail(contact.email)}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-xs text-left transition-colors cursor-pointer",
+                    isSelected ? "bg-accent text-accent-foreground font-medium" : "text-foreground hover:bg-muted/70",
+                  )}
                 >
-                  {filteredSuggestions.map((contact) => (
-                    <CommandItem
-                      key={contact.email}
-                      value={contact.email}
-                      onSelect={() => handleSelectContact(contact)}
-                      className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs cursor-pointer select-none"
-                    >
-                      <MailAvatar
-                        name={contact.name || contact.email}
-                        email={contact.email}
-                        className="size-6 text-[10px]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{contact.name || contact.email}</div>
-                        {contact.name && (
-                          <div className="truncate text-[10px] text-muted-foreground">{contact.email}</div>
-                        )}
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-            </CommandList>
-          </Command>
+                  <MailAvatar
+                    name={contact.name || contact.email}
+                    email={contact.email}
+                    className="size-6 text-[10px] shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{contact.name || contact.email}</div>
+                    {contact.name && (
+                      <div className="truncate text-[10px] text-muted-foreground">{contact.email}</div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </PopoverContent>
       </Popover>
 

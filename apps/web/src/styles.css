@@ -199,7 +199,7 @@ kbd {
 .list-head {
   display: flex;
   height: 44px;
-  flex-shrink: 0;
+  shrink: 0;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
@@ -382,7 +382,7 @@ kbd {
   z-index: 1;
   display: flex;
   min-height: 44px;
-  flex-shrink: 0;
+  shrink: 0;
   align-items: center;
   gap: 4px;
   padding: 0 10px;
@@ -594,7 +594,7 @@ kbd {
 }
 .row-meta {
   display: flex;
-  flex-shrink: 0;
+  shrink: 0;
   align-items: center;
   gap: 6px;
   margin-left: auto;
@@ -609,7 +609,7 @@ kbd {
   display: inline-flex;
   width: 20px;
   height: 20px;
-  flex-shrink: 0;
+  shrink: 0;
   align-items: center;
   justify-content: center;
   color: var(--important);
@@ -639,7 +639,7 @@ kbd {
   white-space: nowrap;
 }
 .subject {
-  flex-shrink: 0;
+  shrink: 0;
   max-width: 70%;
   overflow: hidden;
   color: var(--secondary-foreground);
@@ -676,7 +676,7 @@ kbd {
 }
 .row.narrow .subject {
   max-width: none;
-  flex-shrink: 1;
+  shrink: 1;
 }
 .row.narrow .snippet {
   font-size: 12px;
