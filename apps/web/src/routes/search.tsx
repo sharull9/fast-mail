@@ -58,7 +58,13 @@ function Search() {
       />
     </section>
   );
-  const preview = t ? <ThreadView threadId={t} onClose={close} /> : <EmptyPreview />;
+  const preview = t ? (
+    <ThreadView threadId={t} onClose={close} />
+  ) : (
+    <EmptyPreview
+      summary={`${threads.length.toLocaleString()} search results · ${threads.filter((thread) => thread.unread).length.toLocaleString()} unread`}
+    />
+  );
   if (isMobile) return <div className="mailbox">{t ? preview : list}</div>;
   return (
     <div className="mailbox">

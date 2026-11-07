@@ -235,10 +235,7 @@ function MailboxContent() {
               {unread > 0 && (
                 <span
                   aria-hidden="true"
-                  className={cn(
-                    "absolute top-1 right-1 hidden size-1.5 rounded-full bg-primary",
-                    compact.dot,
-                  )}
+                  className={cn("absolute top-1 right-1 hidden size-1.5 rounded-full bg-primary", compact.dot)}
                 />
               )}
             </TabsTrigger>
@@ -311,7 +308,10 @@ function MailboxContent() {
         <ResizableHandle />
 
         <ResizablePanel id="preview" defaultSize="60%" minSize="30%">
-          <PreviewWorkspace onClose={close} />
+          <PreviewWorkspace
+            onClose={close}
+            summary={`${labelName(labelId, label?.name)} · ${Math.max(threads.length, total ?? 0).toLocaleString()} conversations · ${label?.unread ?? 0} unread`}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

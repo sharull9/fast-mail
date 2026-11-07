@@ -265,7 +265,7 @@ try {
           if (!electronAuthorized(req)) {
             const token = sessionCookie(req);
             const currentSession = token ? browserSessions.findByToken(token) : null;
-            if (!currentSession || currentSession.id !== targetId) {
+            if (token === null || !currentSession || currentSession.id !== targetId) {
               return json({ error: "forbidden: browsers may only disconnect themselves" }, 403);
             }
             browserSessions.revokeToken(token);

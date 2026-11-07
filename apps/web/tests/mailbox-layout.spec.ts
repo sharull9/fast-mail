@@ -107,6 +107,18 @@ test("two compact rows contain scopes, dates, categories and counts, with an emp
   await expectCenteredTabs(page);
   await expect(page.getByText("No conversation selected", { exact: true })).toBeVisible();
   await expect(page.getByText("Pick one from the list, or press j / k")).toBeVisible();
+  const preview = page.locator(".preview-pane");
+  await expect(preview.getByText("Inbox · 1,200 conversations · 10 unread", { exact: true })).toBeVisible();
+  await expect(preview.getByRole("region", { name: "Quick shortcuts" })).toBeVisible();
+  await expect(preview.getByRole("region", { name: "Mail tips" })).toBeVisible();
+  await expect(preview.locator("kbd")).toHaveCount(7);
+
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await expect(preview.getByText("All keyboard shortcuts", { exact: true })).toBeVisible();
+  const overflow = await preview.evaluate((element) => element.scrollWidth > element.clientWidth);
+  expect(overflow).toBe(false);
+  await page.keyboard.press("?");
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
 });
 
 test("list starts at forty percent and both panels stop at thirty percent", async ({ page }) => {

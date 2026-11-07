@@ -15,36 +15,23 @@ import { cn } from "@/lib/utils";
 
 export function PreviewWorkspaceProvider({ children }: { children: ReactNode }) {
   const state = usePreviewWorkspaceState();
-  return (
-    <PreviewWorkspaceContext value={state}>
-      {children}
-    </PreviewWorkspaceContext>
-  );
+  return <PreviewWorkspaceContext value={state}>{children}</PreviewWorkspaceContext>;
 }
 
 // ─── Main Workspace Component ────────────────────────────────────────────────
 
-export function PreviewWorkspace({ onClose }: { onClose: () => void }) {
+export function PreviewWorkspace({ onClose, summary }: { onClose: () => void; summary?: string }) {
   const workspace = usePreviewWorkspace();
   const { rows } = workspace;
 
   // Single row, single pane — no split groups needed
   if (rows.length === 1 && rows[0].panes.length === 1) {
-    return (
-      <WorkspacePane
-        pane={rows[0].panes[0]}
-        onCloseThread={onClose}
-      />
-    );
+    return <WorkspacePane pane={rows[0].panes[0]} summary={summary} onCloseThread={onClose} />;
   }
 
   // Multi-split: outer vertical group for rows, inner horizontal group for columns per row
   return (
-    <Group
-      id="mailfast.workspace-rows"
-      orientation="vertical"
-      className="h-full w-full min-h-0"
-    >
+    <Group id="mailfast.workspace-rows" orientation="vertical" className="h-full w-full min-h-0">
       {rows.map((row, rowIndex) => (
         <Fragment key={`row-${rowIndex}-${row.panes.map((p) => p.id).join(",")}`}>
           {rowIndex > 0 && (
@@ -54,13 +41,9 @@ export function PreviewWorkspace({ onClose }: { onClose: () => void }) {
               className="relative z-10 h-px bg-border after:absolute after:inset-x-0 after:-top-1 after:h-2 hover:bg-primary focus-visible:bg-primary data-[separator=active]:bg-primary"
             />
           )}
-          <Panel
-            id={`mailfast.workspace-row-panel-${rowIndex}`}
-            defaultSize={`${100 / rows.length}%`}
-            minSize="10%"
-          >
+          <Panel id={`mailfast.workspace-row-panel-${rowIndex}`} defaultSize={`${100 / rows.length}%`} minSize="10%">
             {row.panes.length === 1 ? (
-              <WorkspacePane pane={row.panes[0]} onCloseThread={onClose} />
+              <WorkspacePane pane={row.panes[0]} onCloseThread={onClose} summary={summary} />
             ) : (
               <Group
                 id={`mailfast.workspace-row-${rowIndex}`}
@@ -81,7 +64,7 @@ export function PreviewWorkspace({ onClose }: { onClose: () => void }) {
                       defaultSize={`${100 / row.panes.length}%`}
                       minSize="10%"
                     >
-                      <WorkspacePane pane={pane} onCloseThread={onClose} />
+                      <WorkspacePane pane={pane} onCloseThread={onClose} summary={summary} />
                     </Panel>
                   </Fragment>
                 ))}
@@ -96,12 +79,7 @@ export function PreviewWorkspace({ onClose }: { onClose: () => void }) {
 
 // ─── Drop Zone Calculation ───────────────────────────────────────────────────
 
-function getDropZone(
-  e: React.DragEvent,
-  element: HTMLElement,
-  canSplitCols: boolean,
-  canSplitRows: boolean,
-): DropZone {
+function getDropZone(e: React.DragEvent, element: HTMLElement, canSplitCols: boolean, canSplitRows: boolean): DropZone {
   const rect = element.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
@@ -126,13 +104,7 @@ function getDropZone(
 
 // ─── Individual Pane ─────────────────────────────────────────────────────────
 
-function WorkspacePane({
-  pane,
-  onCloseThread,
-}: {
-  pane: Pane;
-  onCloseThread: () => void;
-}) {
+function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseThread: () => void; summary?: string }) {
   const workspace = usePreviewWorkspace();
   const isFocused = workspace.focusedPaneId === pane.id;
   const [dropZone, setDropZone] = useState<DropZone | null>(null);
@@ -171,11 +143,8 @@ function WorkspacePane({
     const zone = dropZone || "center";
     setDropZone(null);
 
-    const threadId =
-      e.dataTransfer.getData("application/mailfast-thread") ||
-      e.dataTransfer.getData("text/plain");
-    const sourcePaneId =
-      e.dataTransfer.getData("application/mailfast-source-pane") || undefined;
+    const threadId = e.dataTransfer.getData("application/mailfast-thread") || e.dataTransfer.getData("text/plain");
+    const sourcePaneId = e.dataTransfer.getData("application/mailfast-source-pane") || undefined;
 
     if (threadId) {
       workspace.dropThread(pane.id, threadId, zone, sourcePaneId);
@@ -202,20 +171,11 @@ function WorkspacePane({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {dropZone && (
-        <div
-          data-slot="drop-overlay"
-          className={cn("drop-target-overlay", `drop-target-${dropZone}`)}
-        />
-      )}
+      {dropZone && <div data-slot="drop-overlay" className={cn("drop-target-overlay", `drop-target-${dropZone}`)} />}
       {pane.threadId ? (
-        <ThreadView
-          threadId={pane.threadId}
-          paneId={pane.id}
-          onClose={handleClose}
-        />
+        <ThreadView threadId={pane.threadId} paneId={pane.id} onClose={handleClose} />
       ) : (
-        <EmptyPreview />
+        <EmptyPreview summary={summary} />
       )}
     </div>
   );
