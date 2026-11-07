@@ -47,6 +47,14 @@ import { DateTimePickerPopover } from "./date-time-picker-popover";
 import { GoogleChipDialog } from "./google-chip-dialog";
 import { SlashCommandExtension } from "./extensions/slash-command-extension";
 
+/** Mentions render as mailto links so tagged users are clickable in sent mail. */
+const MailtoMention = Mention.extend({
+  parseHTML() {
+    // The anchor rule needs priority over the Link mark's `a[href]` rule.
+    return [{ tag: `a[data-type="${this.name}"]`, priority: 60 }, { tag: `span[data-type="${this.name}"]` }];
+  },
+});
+
 interface RichTextEditorProps {
   content: string;
   onChange: (html: string) => void;
@@ -103,18 +111,20 @@ export function RichTextEditor({
           class: "border border-border/70 p-2 text-xs",
         },
       }),
-      Mention.configure({
+      MailtoMention.configure({
         HTMLAttributes: {
           class: "mention",
         },
         suggestion: mentionSuggestion,
         renderHTML({ options, node }) {
+          const email = typeof node.attrs.id === "string" ? node.attrs.id : "";
           return [
-            "span",
+            "a",
             mergeAttributes(options.HTMLAttributes, {
               "data-type": "mention",
               "data-id": node.attrs.id,
               "data-label": node.attrs.label,
+              ...(email ? { href: `mailto:${email}` } : {}),
               class: "mention",
               style:
                 "display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 4px; background-color: rgba(37, 99, 235, 0.1); color: #2563eb; font-weight: 500; font-size: 13px; text-decoration: none;",
