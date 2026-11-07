@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, forwardRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -26,7 +26,9 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 
 interface RichTextEditorProps {
   content: string;
@@ -119,14 +121,14 @@ export function RichTextEditor({
     }
   }, [content, editor]);
 
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
 
-  const openLinkDialog = useCallback(() => {
+  const openLinkPopover = useCallback(() => {
     if (!editor) return;
     const previousUrl = (editor.getAttributes("link").href as string) || "";
     setLinkUrl(previousUrl);
-    setLinkDialogOpen(true);
+    setLinkPopoverOpen(true);
   }, [editor]);
 
   const handleApplyLink = useCallback(() => {
@@ -138,7 +140,7 @@ export function RichTextEditor({
       const formatted = /^https?:\/\//i.test(trimmed) || trimmed.startsWith("mailto:") ? trimmed : `https://${trimmed}`;
       editor.chain().focus().extendMarkRange("link").setLink({ href: formatted }).run();
     }
-    setLinkDialogOpen(false);
+    setLinkPopoverOpen(false);
   }, [editor, linkUrl]);
 
   if (!editor) {
@@ -167,7 +169,7 @@ export function RichTextEditor({
           disabled={!editor.can().redo()}
         />
 
-        <div className="mx-1 h-3.5 w-px bg-border/60" />
+        <Separator orientation="vertical" className="mx-1 h-3.5" />
 
         <ToolbarButton
           icon={<Bold className="size-3.5" />}
@@ -200,7 +202,7 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleCode().run()}
         />
 
-        <div className="mx-1 h-3.5 w-px bg-border/60" />
+        <Separator orientation="vertical" className="mx-1 h-3.5" />
 
         <ToolbarButton
           icon={<Heading1 className="size-3.5" />}
@@ -221,7 +223,7 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         />
 
-        <div className="mx-1 h-3.5 w-px bg-border/60" />
+        <Separator orientation="vertical" className="mx-1 h-3.5" />
 
         <ToolbarButton
           icon={<List className="size-3.5" />}
@@ -248,14 +250,43 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         />
 
-        <div className="mx-1 h-3.5 w-px bg-border/60" />
+        <Separator orientation="vertical" className="mx-1 h-3.5" />
 
-        <ToolbarButton
-          icon={<LinkIcon className="size-3.5" />}
-          label="Insert Link"
-          active={editor.isActive("link")}
-          onClick={openLinkDialog}
-        />
+        <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
+          <PopoverTrigger asChild>
+            <ToolbarButton
+              icon={<LinkIcon className="size-3.5" />}
+              label="Insert Link"
+              active={editor.isActive("link")}
+              onClick={openLinkPopover}
+            />
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-2.5 shadow-xl border border-border" align="start">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold text-foreground">Insert link</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="url"
+                  placeholder="https://example.com"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleApplyLink();
+                    }
+                  }}
+                  className="h-8 text-xs flex-1"
+                  autoFocus
+                />
+                <Button size="sm" onClick={handleApplyLink} className="h-8 px-2.5 text-xs">
+                  {linkUrl.trim() ? "Apply" : "Clear"}
+                </Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
         {editor.isActive("link") && (
           <ToolbarButton
             icon={<Unlink className="size-3.5" />}
@@ -272,69 +303,44 @@ export function RichTextEditor({
 
       {/* Editor Editable Area */}
       <EditorContent editor={editor} className="flex-1 overflow-y-auto cursor-text" />
-
-      {/* Insert Link Dialog */}
-      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Insert link</DialogTitle>
-          </DialogHeader>
-          <div className="py-2">
-            <Input
-              type="url"
-              placeholder="https://example.com"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleApplyLink();
-                }
-              }}
-              autoFocus
-            />
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" size="sm" onClick={() => setLinkDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleApplyLink}>
-              {linkUrl.trim() ? "Apply" : "Remove link"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-function ToolbarButton({
-  icon,
-  label,
-  active = false,
-  disabled = false,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
+const ToolbarButton = forwardRef<
+  HTMLButtonElement,
+  {
+    icon: React.ReactNode;
+    label: string;
+    active?: boolean;
+    disabled?: boolean;
+    onClick?: () => void;
+  } & React.ComponentProps<typeof Button>
+>(({ icon, label, active = false, disabled = false, onClick, className, ...props }, ref) => {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "flex size-6 items-center justify-center rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted focus:outline-none disabled:opacity-40 disabled:pointer-events-none",
-        active && "bg-accent text-accent-foreground font-semibold",
-      )}
-    >
-      {icon}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          ref={ref}
+          type="button"
+          aria-label={label}
+          aria-pressed={active}
+          disabled={disabled}
+          onClick={onClick}
+          className={cn(
+            "flex size-6 items-center justify-center rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-muted focus:outline-none disabled:opacity-40 disabled:pointer-events-none",
+            active && "bg-accent text-accent-foreground font-semibold",
+            className,
+          )}
+          {...props}
+        >
+          {icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[11px] py-1 px-2">
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
-}
+});
+ToolbarButton.displayName = "ToolbarButton";

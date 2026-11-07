@@ -23,32 +23,11 @@ import {
   Loader2,
   ExternalLink,
   PanelBottom,
-  File,
-  FileText,
-  FileArchive,
-  FileCode,
-  Image as ImageIcon,
   CircleAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
-function getFileIcon(mimeType: string, filename: string) {
-  if (mimeType.startsWith("image/")) return <ImageIcon className="size-3.5 text-blue-400" />;
-  if (mimeType.includes("pdf") || filename.endsWith(".pdf")) return <FileText className="size-3.5 text-red-400" />;
-  if (mimeType.includes("zip") || mimeType.includes("tar") || filename.endsWith(".zip"))
-    return <FileArchive className="size-3.5 text-amber-400" />;
-  if (mimeType.includes("json") || mimeType.includes("javascript") || mimeType.includes("typescript"))
-    return <FileCode className="size-3.5 text-emerald-400" />;
-  return <File className="size-3.5 text-muted-foreground" />;
-}
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatBytes, getAttachmentIcon } from "@/components/thread-view";
 
 export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floating" | "fixed"; className?: string }) {
   const {
@@ -75,6 +54,8 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [size, setSize] = useState<{ width: number; height: number }>({ width: 600, height: 540 });
+  const [fixedHeight, setFixedHeight] = useState<number>(480);
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{
     startX: number;
@@ -82,6 +63,85 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
     initialLeft: number;
     initialTop: number;
   } | null>(null);
+
+  type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+  const handleResizePointerDown = (e: React.PointerEvent, direction: ResizeDirection) => {
+    if (e.button !== 0 || isMaximized) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startLeft = rect.left;
+    const startTop = rect.top;
+    const startWidth = rect.width;
+    const startHeight = rect.height;
+
+    const minWidth = 380;
+    const maxWidth = window.innerWidth - 32;
+    const minHeight = 280;
+    const maxHeight = window.innerHeight - 32;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newLeft = startLeft;
+      let newTop = startTop;
+
+      if (direction.includes("w")) {
+        newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth - deltaX));
+        newLeft = startLeft + (startWidth - newWidth);
+      } else if (direction.includes("e")) {
+        newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + deltaX));
+      }
+
+      if (direction.includes("n")) {
+        newHeight = Math.min(maxHeight, Math.max(minHeight, startHeight - deltaY));
+        newTop = startTop + (startHeight - newHeight);
+      } else if (direction.includes("s")) {
+        newHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + deltaY));
+      }
+
+      newLeft = Math.max(8, Math.min(window.innerWidth - newWidth - 8, newLeft));
+      newTop = Math.max(8, Math.min(window.innerHeight - newHeight - 8, newTop));
+
+      setSize({ width: newWidth, height: newHeight });
+      setPosition({ x: newLeft, y: newTop });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const handleFixedHeightResize = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = fixedHeight;
+    const onPointerMove = (ev: PointerEvent) => {
+      const delta = startY - ev.clientY;
+      setFixedHeight(Math.min(900, Math.max(280, startH + delta)));
+    };
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
 
   const activeMode = forcedMode ?? contextMode;
 
@@ -194,30 +254,42 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
           {draft.subject ? draft.subject : draft.to.length > 0 ? `To: ${draft.to.join(", ")}` : "New Message"}
         </span>
         <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleMinimize();
-            }}
-            title="Restore composer"
-          >
-            <Maximize2 className="size-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost-destructive"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDiscard();
-            }}
-            title="Close"
-          >
-            <X className="size-3.5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMinimize();
+                }}
+              >
+                <Maximize2 className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[11px] py-1 px-2">
+              Restore composer
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost-destructive"
+                size="icon-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDiscard();
+                }}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[11px] py-1 px-2">
+              Close
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     );
@@ -228,7 +300,7 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
       ? isMaximized
         ? "fixed inset-4 z-50 flex flex-col rounded-xl border border-border bg-card shadow-2xl max-w-5xl mx-auto my-auto h-[calc(100vh-2rem)]"
         : cn(
-            "fixed z-50 flex flex-col w-[600px] max-w-[calc(100vw-2rem)] h-[540px] max-h-[calc(100vh-3rem)] rounded-xl border border-border bg-card shadow-2xl",
+            "fixed z-50 flex flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden",
             position ? "" : "bottom-4 right-8",
           )
       : cn("flex flex-col rounded-lg border border-border bg-card shadow-xs overflow-hidden", className);
@@ -239,14 +311,25 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
       aria-label="Email composer"
       className={containerClasses}
       style={
-        activeMode === "floating" && !isMaximized && position
-          ? {
-              left: `${position.x}px`,
-              top: `${position.y}px`,
-              right: "auto",
-              bottom: "auto",
+        activeMode === "floating"
+          ? isMaximized
+            ? undefined
+            : position
+              ? {
+                  left: `${position.x}px`,
+                  top: `${position.y}px`,
+                  width: `${size.width}px`,
+                  height: `${size.height}px`,
+                  right: "auto",
+                  bottom: "auto",
+                }
+              : {
+                  width: `${size.width}px`,
+                  height: `${size.height}px`,
+                }
+          : {
+              height: `${fixedHeight}px`,
             }
-          : undefined
       }
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -256,6 +339,62 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
         }
       }}
     >
+      {/* Floating Mode Resize Handles */}
+      {activeMode === "floating" && !isMaximized && (
+        <>
+          {/* Top handle */}
+          <div
+            className="absolute -top-1 left-2 right-2 h-2.5 cursor-ns-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "n")}
+          />
+          {/* Bottom handle */}
+          <div
+            className="absolute -bottom-1 left-2 right-2 h-2.5 cursor-ns-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "s")}
+          />
+          {/* Left handle */}
+          <div
+            className="absolute top-2 bottom-2 -left-1 w-2.5 cursor-ew-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "w")}
+          />
+          {/* Right handle */}
+          <div
+            className="absolute top-2 bottom-2 -right-1 w-2.5 cursor-ew-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "e")}
+          />
+          {/* Top-Left handle */}
+          <div
+            className="absolute -top-1.5 -left-1.5 size-4 cursor-nwse-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "nw")}
+          />
+          {/* Top-Right handle */}
+          <div
+            className="absolute -top-1.5 -right-1.5 size-4 cursor-nesw-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "ne")}
+          />
+          {/* Bottom-Left handle */}
+          <div
+            className="absolute -bottom-1.5 -left-1.5 size-4 cursor-nesw-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "sw")}
+          />
+          {/* Bottom-Right handle */}
+          <div
+            className="absolute -bottom-1.5 -right-1.5 size-4 cursor-nwse-resize z-50 select-none"
+            onPointerDown={(e) => handleResizePointerDown(e, "se")}
+          />
+        </>
+      )}
+
+      {/* Fixed Mode Top Resize Handle */}
+      {activeMode === "fixed" && (
+        <div
+          className="h-2 w-full cursor-ns-resize hover:bg-primary/20 transition-colors flex items-center justify-center -mt-0.5 group select-none shrink-0"
+          onPointerDown={handleFixedHeightResize}
+          title="Drag to resize composer height"
+        >
+          <div className="h-1 w-10 rounded-full bg-border/80 group-hover:bg-primary/80 transition-colors" />
+        </div>
+      )}
       {/* Composer Header */}
       <div
         className={cn(
@@ -270,52 +409,80 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
 
         <div className="flex items-center gap-1">
           {/* Mode Switcher: Floating vs Fixed */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setMode(activeMode === "floating" ? "fixed" : "floating")}
-            title={activeMode === "floating" ? "Dock / Fixed panel mode" : "Pop out to floating panel"}
-          >
-            {activeMode === "floating" ? <PanelBottom className="size-3.5" /> : <ExternalLink className="size-3.5" />}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setMode(activeMode === "floating" ? "fixed" : "floating")}
+              >
+                {activeMode === "floating" ? (
+                  <PanelBottom className="size-3.5" />
+                ) : (
+                  <ExternalLink className="size-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-[11px] py-1 px-2">
+              {activeMode === "floating" ? "Dock to panel" : "Pop out to floating panel"}
+            </TooltipContent>
+          </Tooltip>
 
           {activeMode === "floating" && (
             <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={toggleMinimize}
-                title="Minimize"
-              >
-                <Minus className="size-3.5" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={toggleMaximize}
-                title={isMaximized ? "Restore size" : "Maximize"}
-              >
-                {isMaximized ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={toggleMinimize}
+                  >
+                    <Minus className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-[11px] py-1 px-2">
+                  Minimize
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={toggleMaximize}
+                  >
+                    {isMaximized ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-[11px] py-1 px-2">
+                  {isMaximized ? "Restore size" : "Maximize"}
+                </TooltipContent>
+              </Tooltip>
             </>
           )}
 
-          <Button
-            type="button"
-            variant="ghost-destructive"
-            size="icon-xs"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={handleDiscard}
-            title="Close"
-          >
-            <X className="size-3.5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost-destructive"
+                size="icon-xs"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleDiscard}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-[11px] py-1 px-2">
+              Close
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -376,17 +543,24 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
               key={att.id}
               className="flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-xs text-foreground"
             >
-              {getFileIcon(att.mimeType, att.filename)}
+              {getAttachmentIcon(att.mimeType, att.filename)}
               <span className="max-w-44 truncate font-medium">{att.filename}</span>
               <span className="text-[10px] text-muted-foreground">({formatBytes(att.size)})</span>
-              <button
-                type="button"
-                className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted ml-0.5"
-                onClick={() => removeAttachment(att.id)}
-                title="Remove attachment"
-              >
-                <X className="size-3" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted ml-0.5"
+                    onClick={() => removeAttachment(att.id)}
+                    aria-label={`Remove ${att.filename}`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-[11px] py-1 px-2">
+                  Remove attachment
+                </TooltipContent>
+              </Tooltip>
             </div>
           ))}
         </div>
@@ -452,28 +626,55 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
             }}
           />
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => fileInputRef.current?.click()}
-            title="Attach files"
-          >
-            <Paperclip className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach files"
+              >
+                <Paperclip className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[11px] py-1 px-2">
+              Attach files
+            </TooltipContent>
+          </Tooltip>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost-destructive"
-            size="icon-sm"
-            onClick={handleClearDetails}
-            title="Clear input details"
-            aria-label="Clear input details"
-          >
-            <Trash2 className="size-4" />
-          </Button>
+        <div className="flex items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost-destructive"
+                size="icon-sm"
+                onClick={handleClearDetails}
+                aria-label="Clear input details"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[11px] py-1 px-2">
+              Clear input details
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Corner Resize Grip */}
+          {activeMode === "floating" && !isMaximized && (
+            <div
+              onPointerDown={(e) => handleResizePointerDown(e, "se")}
+              className="cursor-nwse-resize p-1 text-muted-foreground/30 hover:text-foreground transition-colors select-none -mr-1"
+              title="Drag to resize"
+              aria-label="Resize composer"
+            >
+              <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M10 2L2 10M10 6L6 10M10 10H10.01" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+          )}
         </div>
       </div>
 
