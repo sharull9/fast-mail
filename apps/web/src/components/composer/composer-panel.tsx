@@ -29,7 +29,30 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBytes, getAttachmentIcon } from "@/components/thread-view";
 
-export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floating" | "fixed"; className?: string }) {
+function getDockedRight(index: number, total: number, panelWidth: number, isMin: boolean): number {
+  if (total <= 1) return 32;
+  const width = isMin ? 288 : panelWidth;
+  const windowWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const available = Math.max(100, windowWidth - width - 48);
+  const idealStep = width + 16;
+  const fitAll = available >= (total - 1) * idealStep;
+  const step = fitAll ? idealStep : Math.max(56, Math.floor(available / Math.max(1, total - 1)));
+  return 32 + index * step;
+}
+
+export function ComposerPanel({
+  mode: forcedMode,
+  className,
+  composerId,
+  floatingIndex = 0,
+  totalFloating = 1,
+}: {
+  mode?: "floating" | "fixed";
+  className?: string;
+  composerId?: string;
+  floatingIndex?: number;
+  totalFloating?: number;
+}) {
   const {
     isOpen,
     isMinimized,
@@ -46,7 +69,9 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
     clearDraft,
     sendMessage,
     hasContent,
-  } = useComposer();
+    bringToFront,
+    activeComposerId,
+  } = useComposer(composerId);
 
   const [showCc, setShowCc] = useState(draft.cc.length > 0);
   const [showBcc, setShowBcc] = useState(draft.bcc.length > 0);
@@ -243,12 +268,18 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
     return null;
   }
 
+  const isActive = activeComposerId ? activeComposerId === composerId : floatingIndex === 0;
+  const zIndex = isMaximized ? 60 : isActive ? 55 : 40 + Math.max(0, 10 - floatingIndex);
+  const dockedRight = getDockedRight(floatingIndex, totalFloating, size.width, isMinimized);
+
   // Minimized state in floating mode (solid opaque background, no hover transparency)
   if (activeMode === "floating" && isMinimized) {
     return (
       <div
-        className="fixed bottom-0 right-8 z-50 flex h-10 w-72 items-center justify-between rounded-t-lg border-t border-x border-border bg-card px-3 shadow-2xl transition-colors cursor-pointer hover:bg-muted"
-        onClick={toggleMinimize}
+        className="fixed bottom-0 z-50 flex h-10 w-72 items-center justify-between rounded-t-lg border-t border-x border-border bg-card px-3 shadow-2xl transition-colors cursor-pointer hover:bg-muted"
+        style={{ right: `${dockedRight}px`, zIndex }}
+        onPointerDown={() => composerId && bringToFront(composerId)}
+        onClick={() => toggleMinimize()}
       >
         <span className="truncate text-xs font-semibold text-foreground">
           {draft.subject ? draft.subject : draft.to.length > 0 ? `To: ${draft.to.join(", ")}` : "New Message"}
@@ -298,10 +329,10 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
   const containerClasses =
     activeMode === "floating"
       ? isMaximized
-        ? "fixed inset-4 z-50 flex flex-col rounded-xl border border-border bg-card shadow-2xl max-w-5xl mx-auto my-auto h-[calc(100vh-2rem)]"
+        ? "fixed inset-4 flex flex-col rounded-xl border border-border bg-card shadow-2xl max-w-5xl mx-auto my-auto h-[calc(100vh-2rem)]"
         : cn(
-            "fixed z-50 flex flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden",
-            position ? "" : "bottom-4 right-8",
+            "fixed flex flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden",
+            position ? "" : "bottom-4",
           )
       : cn("flex flex-col rounded-lg border border-border bg-card shadow-xs overflow-hidden", className);
 
@@ -310,10 +341,11 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
       ref={panelRef}
       aria-label="Email composer"
       className={containerClasses}
+      onPointerDown={() => composerId && bringToFront(composerId)}
       style={
         activeMode === "floating"
           ? isMaximized
-            ? undefined
+            ? { zIndex }
             : position
               ? {
                   left: `${position.x}px`,
@@ -322,10 +354,13 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
                   height: `${size.height}px`,
                   right: "auto",
                   bottom: "auto",
+                  zIndex,
                 }
               : {
+                  right: `${dockedRight}px`,
                   width: `${size.width}px`,
                   height: `${size.height}px`,
+                  zIndex,
                 }
           : {
               height: `${fixedHeight}px`,
@@ -439,7 +474,7 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
                     variant="ghost"
                     size="icon-xs"
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={toggleMinimize}
+                    onClick={() => toggleMinimize()}
                   >
                     <Minus className="size-3.5" />
                   </Button>
@@ -455,7 +490,7 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
                     variant="ghost"
                     size="icon-xs"
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={toggleMaximize}
+                    onClick={() => toggleMaximize()}
                   >
                     {isMaximized ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
                   </Button>
@@ -607,7 +642,7 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
               <>
                 <Send className="size-3.5" />
                 <span>Send</span>
-                <kbd className="ml-1 text-[10px] !text-primary-foreground/85 font-semibold">⌘Enter</kbd>
+                <kbd className="ml-1 text-[10px] text-primary-foreground/85! font-semibold">⌘Enter</kbd>
               </>
             )}
           </Button>

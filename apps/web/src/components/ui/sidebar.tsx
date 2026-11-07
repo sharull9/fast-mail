@@ -301,7 +301,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       aria-label="Resize sidebar"
       title="Drag to resize, click to toggle, double-click to reset"
       className={cn(
-        "absolute inset-y-0 right-[-3px] z-20 hidden w-[6px] touch-none cursor-col-resize md:block after:absolute after:inset-y-0 after:left-[2px] after:w-px after:bg-sidebar-border hover:after:bg-primary focus-visible:after:bg-primary",
+        "absolute inset-y-0 -right-0.75 z-20 hidden w-1.5 touch-none cursor-col-resize md:block after:absolute after:inset-y-0 after:left-0.5 after:w-px after:bg-sidebar-border hover:after:bg-primary focus-visible:after:bg-primary",
         resizing && "after:bg-primary",
         className,
       )}

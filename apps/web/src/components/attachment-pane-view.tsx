@@ -72,7 +72,7 @@ export function AttachmentPaneView({
   return (
     <div className="pane @container h-full flex flex-col overflow-hidden">
       <div className="toolbar">
-        <div className="flex items-center gap-2 min-w-0 max-w-[280px]">
+        <div className="flex items-center gap-2 min-w-0 max-w-70">
           {getAttachmentIcon(attachment.mimeType, attachment.filename)}
           <div className="min-w-0">
             <p className="text-xs font-medium truncate text-foreground" title={attachment.filename}>

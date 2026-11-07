@@ -8,16 +8,35 @@ import { Scanner } from "@tailwindcss/oxide";
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = resolve(appDir, "src");
 const fix = process.argv.includes("--fix");
-const designSystem = await __unstable__loadDesignSystem(await readFile(resolve(srcDir, "styles.css"), "utf8"), {
-  base: srcDir,
-});
+const css = await readFile(resolve(srcDir, "styles.css"), "utf8");
+// Tailwind caches canonicalization per design system regardless of options, so the plain and
+// rem-normalized passes each need their own instance.
+const designSystem = await __unstable__loadDesignSystem(css, { base: srcDir });
+const remDesignSystem = await __unstable__loadDesignSystem(css, { base: srcDir });
 const scanner = new Scanner({ sources: [{ base: srcDir, pattern: "**/*", negated: false }] });
 const replacements = new Map<string, string>();
 
+// A theme value is only statically known if it doesn't defer to another variable. E.g. `--radius-lg:
+// var(--radius)` resolves against Tailwind's default `--radius` (0.25rem) at build time, while
+// `:root` overrides it to 0.625rem at runtime, so `rounded-[4px] -> rounded-lg` would be wrong.
+function usesOnlyStaticThemeValues(candidate: string) {
+  const [cssCandidate] = designSystem.candidatesToCss([candidate]);
+  const css = cssCandidate ?? "";
+  return [...css.matchAll(/var\((--[\w-]+)/g)].every(([, name]) => {
+    if (name.startsWith("--tw-")) return true; // Tailwind internals, e.g. `--tw-content` for `after:`.
+    const value = designSystem.theme.get([name as `--${string}`]);
+    return value != null && !value.includes("var(");
+  });
+}
+
 for (const candidate of scanner.scan()) {
-  // Preserve px/rem units; normalizing them can change the meaning of custom theme values.
   const [canonical] = designSystem.canonicalizeCandidates([candidate]);
-  if (canonical && canonical !== candidate) replacements.set(candidate, canonical);
+  // Match Tailwind IntelliSense (suggestCanonicalClasses), which uses a 16px root font size so
+  // arbitrary px values like `w-[640px]` map onto theme scales (`w-160`). Only accept those
+  // px-derived rewrites when the target utility's theme values are static.
+  const [remCanonical] = remDesignSystem.canonicalizeCandidates([candidate], { rem: 16 });
+  const best = remCanonical !== canonical && usesOnlyStaticThemeValues(remCanonical) ? remCanonical : canonical;
+  if (best && best !== candidate) replacements.set(candidate, best);
 }
 
 let count = 0;

@@ -81,8 +81,49 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
     }
   }, [data?.thread.unread, threadId]);
 
-  const { openComposer, isOpen: isComposerOpen, mode: composerMode, draft } = useComposer();
-  const isInlineComposerActive = isComposerOpen && composerMode === "fixed" && draft.threadId === threadId;
+  const { openComposer, composers } = useComposer();
+  const inlineComposer = composers.find((c) => c.isOpen && c.mode === "fixed" && c.draft.threadId === threadId);
+  const isInlineComposerActive = Boolean(inlineComposer);
+
+  const paneRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const lastScrolledThreadRef = useRef<string | null>(null);
+
+  // Clear message expansion overrides on thread switch so only last message opens
+  useEffect(() => {
+    messageExpandedOverrides.clear();
+  }, [threadId]);
+
+  // When there is history in thread open, auto scroll to the bottom
+  useEffect(() => {
+    if (!data?.messages || data.messages.length <= 1) {
+      return;
+    }
+    if (lastScrolledThreadRef.current !== threadId) {
+      lastScrolledThreadRef.current = threadId;
+
+      const scrollToBottom = () => {
+        if (paneRef.current) {
+          paneRef.current.scrollTop = paneRef.current.scrollHeight;
+        }
+      };
+
+      scrollToBottom();
+      const raf1 = requestAnimationFrame(() => {
+        scrollToBottom();
+        const raf2 = requestAnimationFrame(scrollToBottom);
+        return () => cancelAnimationFrame(raf2);
+      });
+      const t1 = setTimeout(scrollToBottom, 60);
+      const t2 = setTimeout(scrollToBottom, 200);
+
+      return () => {
+        cancelAnimationFrame(raf1);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [data?.messages, threadId]);
 
   const handleReply = useCallback(
     (message: MessageMeta, replyAll = false, mode: "fixed" | "floating" = "fixed") => {
@@ -209,7 +250,7 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
 
   return (
     // The reading pane is its own size container: it is resizable, so its layout follows its width, not the window's.
-    <div className="pane @container h-full">
+    <div ref={paneRef} className="pane @container h-full">
       <div className="toolbar">
         <IconButton
           label={inInbox ? "Archive" : "Move to Inbox"}
@@ -298,29 +339,33 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
         </div>
 
         <ol className="divide-y divide-border/60">
-          {data.messages.map((m) => (
-            <ThreadMessageItem
-              key={m.id}
-              message={m}
-              account={account}
-              defaultExpanded={true}
-              onPreview={setPreviewAttachment}
-              gmailUrl={gmailUrl}
-              paneId={paneId}
-              onReply={(replyAll) => handleReply(m, replyAll, "fixed")}
-              onForward={() => handleForward(m, "floating")}
-            />
-          ))}
+          {data.messages.map((m, index) => {
+            const hasHistory = data.messages.length > 1;
+            const isLast = index === data.messages.length - 1;
+            return (
+              <ThreadMessageItem
+                key={m.id}
+                message={m}
+                account={account}
+                defaultExpanded={hasHistory ? isLast : true}
+                onPreview={setPreviewAttachment}
+                gmailUrl={gmailUrl}
+                paneId={paneId}
+                onReply={(replyAll) => handleReply(m, replyAll, "fixed")}
+                onForward={() => handleForward(m, "floating")}
+              />
+            );
+          })}
         </ol>
 
         {/* Bottom Reply Bar or Inline Fixed Composer */}
-        {isInlineComposerActive ? (
+        {isInlineComposerActive && inlineComposer ? (
           <div className="mt-6 pt-4 border-t border-border/50">
-            <ComposerPanel mode="fixed" />
+            <ComposerPanel composerId={inlineComposer.id} mode="fixed" />
           </div>
         ) : (
           <div className="mt-6 pt-4 border-t border-border/50">
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -360,6 +405,7 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
             </div>
           </div>
         )}
+        <div ref={bottomRef} className="h-px" />
       </div>
       {allAttachments.length > 0 && (
         <div className="sticky bottom-0 z-10 mt-auto bg-background/95 backdrop-blur-xs">
@@ -467,7 +513,7 @@ function AttachmentCard({
         >
           {getAttachmentIcon(attachment.mimeType, attachment.filename)}
           <div className="flex min-w-0 flex-col">
-            <span className="truncate max-w-[200px] font-medium text-foreground group-hover:text-primary">
+            <span className="truncate max-w-50 font-medium text-foreground group-hover:text-primary">
               {attachment.filename}
             </span>
             <span className="text-[10px] text-muted-foreground tabular-nums">
@@ -653,7 +699,7 @@ function AttachmentPreviewDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 min-h-[300px] overflow-auto flex items-center justify-center p-2">
+        <div className="flex-1 min-h-75 overflow-auto flex items-center justify-center p-2">
           {loading && (
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <Loader2 className="size-6 animate-spin text-primary" />
@@ -978,6 +1024,12 @@ function ThreadMessageItem({
   const [expanded, setExpandedState] = useState(() => {
     return messageExpandedOverrides.has(m.id) ? messageExpandedOverrides.get(m.id)! : defaultExpanded;
   });
+
+  useEffect(() => {
+    if (!messageExpandedOverrides.has(m.id)) {
+      setExpandedState(defaultExpanded);
+    }
+  }, [defaultExpanded, m.id]);
 
   const setExpanded = useCallback(
     (action: boolean | ((prev: boolean) => boolean)) => {

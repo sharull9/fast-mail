@@ -213,7 +213,7 @@ function AppContent() {
       callback: openSearch,
     })),
   );
-  const { openComposer, mode: composerMode, draft } = useComposer();
+  const { openComposer, composers } = useComposer();
   useHotkey(appHotkeys.shortcuts, () => setShortcutsOpen(true));
   useHotkey(appHotkeys.compose, () => openComposer());
   return (
@@ -252,7 +252,11 @@ function AppContent() {
         />
         <KeyboardShortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <PairBrowserDialog open={pairBrowserOpen} onOpenChange={setPairBrowserOpen} />
-        {(composerMode === "floating" || !draft.threadId) && <ComposerPanel />}
+        {composers
+          .filter((c) => c.isOpen && (c.mode === "floating" || !c.draft.threadId))
+          .map((c, index, arr) => (
+            <ComposerPanel key={c.id} composerId={c.id} floatingIndex={index} totalFloating={arr.length} />
+          ))}
       </AppContextMenu>
     </>
   );
@@ -427,15 +431,15 @@ function Sidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Compose message"
-              className="rounded-lg bg-primary !text-primary-foreground font-semibold hover:!bg-primary/85 hover:!text-primary-foreground active:!bg-primary/95 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center shadow-xs [&>svg]:!text-primary-foreground"
+              className="rounded-lg bg-primary text-primary-foreground! font-semibold hover:bg-primary/85! hover:text-primary-foreground! active:bg-primary/95! group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center shadow-xs [&>svg]:text-primary-foreground!"
               onClick={onCompose}
               tooltip={`Compose message (${shortcutLabel("compose")})`}
             >
-              <PenSquare className="size-4 shrink-0 !text-primary-foreground" />
-              <span className="font-semibold !text-primary-foreground group-data-[collapsible=icon]:hidden">
+              <PenSquare className="size-4 shrink-0 text-primary-foreground!" />
+              <span className="font-semibold text-primary-foreground! group-data-[collapsible=icon]:hidden">
                 Compose
               </span>
-              <kbd className="ml-auto text-xs !text-primary-foreground/75 font-semibold group-data-[collapsible=icon]:hidden">
+              <kbd className="ml-auto text-xs text-primary-foreground/75! font-semibold group-data-[collapsible=icon]:hidden">
                 {shortcutLabel("compose")}
               </kbd>
             </SidebarMenuButton>

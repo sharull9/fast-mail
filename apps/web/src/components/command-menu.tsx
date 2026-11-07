@@ -303,7 +303,7 @@ export function CommandMenu({
     <CommandDialog
       title="Search mail and commands"
       description="Search cached mail, filter with @user:alice, or type @ to find an action."
-      className="top-[14vh] w-[640px] max-w-[92vw] translate-y-0 gap-0 rounded-xl border bg-popover shadow-2xl sm:max-w-[92vw]"
+      className="top-[14vh] w-160 max-w-[92vw] translate-y-0 gap-0 rounded-xl border bg-popover shadow-2xl sm:max-w-[92vw]"
       showCloseButton={false}
       commandProps={{ value: selectedItem, onValueChange: setSelectedItem, shouldFilter: false, loop: true }}
       open={open}
@@ -384,7 +384,7 @@ export function CommandMenu({
                       value={item.id}
                       disabled={item.disabled}
                       className={cn(
-                        thread && "h-[52px]",
+                        thread && "h-13",
                         "destructive" in item &&
                           item.destructive &&
                           "text-destructive data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive [&_svg]:text-destructive",
