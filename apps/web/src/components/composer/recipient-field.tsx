@@ -73,10 +73,10 @@ export function RecipientField({
 
   return (
     <div
-      className="flex min-h-9 flex-wrap items-center gap-1.5 border-b border-border/40 py-1.5 px-3 text-xs bg-background/50 hover:bg-background/80 transition-colors"
+      className="flex min-h-9 flex-wrap items-center gap-2 border-b border-border/40 py-1.5 px-3 text-xs bg-background/50 hover:bg-background/80 transition-colors"
       onClick={() => inputRef.current?.focus()}
     >
-      <span className="w-10 font-medium text-muted-foreground select-none shrink-0">{label}:</span>
+      <span className="w-16 font-medium text-muted-foreground select-none shrink-0">{label}:</span>
 
       <div className="flex flex-1 flex-wrap items-center gap-1.5 min-w-40">
         {recipients.map((email, idx) => (

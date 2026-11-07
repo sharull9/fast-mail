@@ -213,7 +213,7 @@ function AppContent() {
       callback: openSearch,
     })),
   );
-  const { openComposer } = useComposer();
+  const { openComposer, mode: composerMode, draft } = useComposer();
   useHotkey(appHotkeys.shortcuts, () => setShortcutsOpen(true));
   useHotkey(appHotkeys.compose, () => openComposer());
   return (
@@ -252,7 +252,7 @@ function AppContent() {
         />
         <KeyboardShortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <PairBrowserDialog open={pairBrowserOpen} onOpenChange={setPairBrowserOpen} />
-        <ComposerPanel />
+        {(composerMode === "floating" || !draft.threadId) && <ComposerPanel />}
       </AppContextMenu>
     </>
   );
@@ -432,7 +432,7 @@ function Sidebar({
               tooltip={`Compose message (${shortcutLabel("compose")})`}
             >
               <PenSquare className="size-4 shrink-0" />
-              <span className="font-medium">Compose</span>
+              <span className="font-medium group-data-[collapsible=icon]:hidden">Compose</span>
               <kbd className="ml-auto text-xs opacity-75 group-data-[collapsible=icon]:hidden">
                 {shortcutLabel("compose")}
               </kbd>

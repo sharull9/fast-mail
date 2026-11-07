@@ -5,6 +5,14 @@ import { RichTextEditor } from "@/components/composer/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   X,
   Minus,
   Maximize2,
@@ -56,6 +64,7 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
     toggleMaximize,
     setMode,
     updateDraft,
+    clearDraft,
     sendMessage,
     hasContent,
   } = useComposer();
@@ -63,6 +72,16 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
   const [showCc, setShowCc] = useState(draft.cc.length > 0);
   const [showBcc, setShowBcc] = useState(draft.bcc.length > 0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    initialLeft: number;
+    initialTop: number;
+  } | null>(null);
 
   const activeMode = forcedMode ?? contextMode;
 
@@ -102,34 +121,83 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
     [updateDraft],
   );
 
+  const [confirmAction, setConfirmAction] = useState<"discard" | "clear" | null>(null);
+
   const handleDiscard = useCallback(() => {
     if (hasContent()) {
-      if (window.confirm("Discard unsaved message?")) {
-        closeComposer();
-      }
+      setConfirmAction("discard");
     } else {
       closeComposer();
     }
   }, [hasContent, closeComposer]);
 
+  const handleClearDetails = useCallback(() => {
+    if (hasContent()) {
+      setConfirmAction("clear");
+    } else {
+      clearDraft();
+    }
+  }, [hasContent, clearDraft]);
+
+  const handleHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || activeMode !== "floating" || isMaximized) return;
+    if ((e.target as HTMLElement).closest("button, input, textarea, a")) return;
+
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialLeft: rect.left,
+      initialTop: rect.top,
+    };
+    setIsDragging(true);
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (!dragRef.current || !panelRef.current) return;
+      const deltaX = moveEvent.clientX - dragRef.current.startX;
+      const deltaY = moveEvent.clientY - dragRef.current.startY;
+      const panelWidth = panelRef.current.offsetWidth;
+      const panelHeight = panelRef.current.offsetHeight;
+
+      const newLeft = Math.max(8, Math.min(window.innerWidth - panelWidth - 8, dragRef.current.initialLeft + deltaX));
+      const newTop = Math.max(8, Math.min(window.innerHeight - panelHeight - 8, dragRef.current.initialTop + deltaY));
+
+      setPosition({ x: newLeft, y: newTop });
+    };
+
+    const onPointerUp = () => {
+      dragRef.current = null;
+      setIsDragging(false);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
   if (!isOpen && !forcedMode) {
     return null;
   }
 
-  // Minimized state in floating mode
+  // Minimized state in floating mode (solid opaque background, no hover transparency)
   if (activeMode === "floating" && isMinimized) {
     return (
       <div
-        className="fixed bottom-0 right-8 z-50 flex h-10 w-72 items-center justify-between rounded-t-lg border-t border-x border-border/80 bg-card px-3 shadow-xl transition-all cursor-pointer hover:bg-muted/60"
+        className="fixed bottom-0 right-8 z-50 flex h-10 w-72 items-center justify-between rounded-t-lg border-t border-x border-border bg-card px-3 shadow-2xl transition-colors cursor-pointer hover:bg-muted"
         onClick={toggleMinimize}
       >
         <span className="truncate text-xs font-semibold text-foreground">
           {draft.subject ? draft.subject : draft.to.length > 0 ? `To: ${draft.to.join(", ")}` : "New Message"}
         </span>
         <div className="flex items-center gap-1">
-          <button
+          <Button
             type="button"
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
+            variant="ghost"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation();
               toggleMinimize();
@@ -137,10 +205,11 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
             title="Restore composer"
           >
             <Maximize2 className="size-3.5" />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted"
+            variant="ghost-destructive"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation();
               handleDiscard();
@@ -148,7 +217,7 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
             title="Close"
           >
             <X className="size-3.5" />
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -157,14 +226,28 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
   const containerClasses =
     activeMode === "floating"
       ? isMaximized
-        ? "fixed inset-4 z-50 flex flex-col rounded-xl border border-border/80 bg-card shadow-2xl max-w-5xl mx-auto my-auto h-[calc(100vh-2rem)]"
-        : "fixed bottom-4 right-8 z-50 flex flex-col w-[600px] max-w-[calc(100vw-2rem)] h-[540px] max-h-[calc(100vh-3rem)] rounded-xl border border-border/80 bg-card shadow-2xl"
-      : cn("flex flex-col rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm overflow-hidden", className);
+        ? "fixed inset-4 z-50 flex flex-col rounded-xl border border-border bg-card shadow-2xl max-w-5xl mx-auto my-auto h-[calc(100vh-2rem)]"
+        : cn(
+            "fixed z-50 flex flex-col w-[600px] max-w-[calc(100vw-2rem)] h-[540px] max-h-[calc(100vh-3rem)] rounded-xl border border-border bg-card shadow-2xl",
+            position ? "" : "bottom-4 right-8",
+          )
+      : cn("flex flex-col rounded-lg border border-border bg-card shadow-xs overflow-hidden", className);
 
   return (
     <section
+      ref={panelRef}
       aria-label="Email composer"
       className={containerClasses}
+      style={
+        activeMode === "floating" && !isMaximized && position
+          ? {
+              left: `${position.x}px`,
+              top: `${position.y}px`,
+              right: "auto",
+              bottom: "auto",
+            }
+          : undefined
+      }
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -174,51 +257,65 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
       }}
     >
       {/* Composer Header */}
-      <div className="flex h-10 items-center justify-between border-b border-border/50 bg-muted/40 px-3.5 select-none shrink-0">
+      <div
+        className={cn(
+          "flex h-10 items-center justify-between border-b border-border/50 bg-muted/40 px-3.5 select-none shrink-0",
+          activeMode === "floating" && !isMaximized && (isDragging ? "cursor-grabbing" : "cursor-grab"),
+        )}
+        onPointerDown={handleHeaderPointerDown}
+      >
         <span className="text-xs font-semibold text-foreground">
           {draft.inReplyTo ? "Reply" : draft.subject || "New Message"}
         </span>
 
         <div className="flex items-center gap-1">
           {/* Mode Switcher: Floating vs Fixed */}
-          <button
+          <Button
             type="button"
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+            variant="ghost"
+            size="icon-xs"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setMode(activeMode === "floating" ? "fixed" : "floating")}
             title={activeMode === "floating" ? "Dock / Fixed panel mode" : "Pop out to floating panel"}
           >
             {activeMode === "floating" ? <PanelBottom className="size-3.5" /> : <ExternalLink className="size-3.5" />}
-          </button>
+          </Button>
 
           {activeMode === "floating" && (
             <>
-              <button
+              <Button
                 type="button"
-                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                variant="ghost"
+                size="icon-xs"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={toggleMinimize}
                 title="Minimize"
               >
                 <Minus className="size-3.5" />
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                variant="ghost"
+                size="icon-xs"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={toggleMaximize}
                 title={isMaximized ? "Restore size" : "Maximize"}
               >
                 {isMaximized ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-              </button>
+              </Button>
             </>
           )}
 
-          <button
+          <Button
             type="button"
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+            variant="ghost-destructive"
+            size="icon-xs"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={handleDiscard}
             title="Close"
           >
             <X className="size-3.5" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -253,13 +350,13 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
           />
         )}
 
-        <div className="flex items-center border-b border-border/40 py-1.5 px-3 text-xs bg-background/50">
-          <span className="w-10 font-medium text-muted-foreground select-none shrink-0">Subject:</span>
+        <div className="flex items-center gap-2 border-b border-border/40 py-1.5 px-3 text-xs bg-background/50">
+          <span className="w-16 font-medium text-muted-foreground select-none shrink-0">Subject:</span>
           <input
             type="text"
             value={draft.subject}
             placeholder="Subject..."
-            className="flex-1 bg-transparent py-0.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="flex-1 min-w-0 bg-transparent py-0.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
             onChange={(e) => updateDraft({ subject: e.target.value })}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -335,8 +432,8 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
             ) : (
               <>
                 <Send className="size-3.5" />
-                Send
-                <kbd className="ml-1 text-[10px] opacity-70">⌘Enter</kbd>
+                <span>Send</span>
+                <kbd className="ml-1 text-[10px] !text-primary-foreground/85 font-semibold">⌘Enter</kbd>
               </>
             )}
           </Button>
@@ -369,16 +466,49 @@ export function ComposerPanel({ mode: forcedMode, className }: { mode?: "floatin
         <div className="flex items-center gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="ghost-destructive"
             size="icon-sm"
-            onClick={handleDiscard}
-            title="Discard draft"
-            className="text-muted-foreground hover:text-destructive"
+            onClick={handleClearDetails}
+            title="Clear input details"
+            aria-label="Clear input details"
           >
             <Trash2 className="size-4" />
           </Button>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{confirmAction === "discard" ? "Discard unsaved draft?" : "Clear all details?"}</DialogTitle>
+            <DialogDescription>
+              {confirmAction === "discard"
+                ? "This will close the composer and discard any unsaved changes."
+                : "This will clear all recipients, subject, attachments, and message content."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-3 flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirmAction === "discard") {
+                  closeComposer();
+                } else if (confirmAction === "clear") {
+                  clearDraft();
+                }
+                setConfirmAction(null);
+              }}
+            >
+              {confirmAction === "discard" ? "Discard draft" : "Clear details"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

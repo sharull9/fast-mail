@@ -48,6 +48,7 @@ interface ComposerContextValue {
   toggleMaximize: () => void;
   setMode: (mode: ComposerMode) => void;
   updateDraft: (updates: Partial<ComposerDraft> | ((prev: ComposerDraft) => ComposerDraft)) => void;
+  clearDraft: () => void;
   sendMessage: () => Promise<SendMessageResponse | null>;
   hasContent: () => boolean;
 }
@@ -110,6 +111,16 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
       }
       return { ...prev, ...updates };
     });
+  }, []);
+
+  const clearDraft = useCallback(() => {
+    setDraft((prev) => ({
+      ...EMPTY_DRAFT,
+      threadId: prev.threadId,
+      inReplyTo: prev.inReplyTo,
+      references: prev.references,
+    }));
+    setSendError(null);
   }, []);
 
   const hasContent = useCallback(() => {
@@ -188,6 +199,7 @@ export function ComposerProvider({ children }: { children: ReactNode }) {
         toggleMaximize,
         setMode,
         updateDraft,
+        clearDraft,
         sendMessage,
         hasContent,
       }}

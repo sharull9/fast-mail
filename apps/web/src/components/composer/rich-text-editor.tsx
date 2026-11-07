@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -24,6 +24,9 @@ import {
   RemoveFormatting,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface RichTextEditorProps {
   content: string;
@@ -109,27 +112,34 @@ export function RichTextEditor({
 
   // Sync external content update if editor content is divergent
   useEffect(() => {
-    if (editor && content !== editor.getHTML() && !editor.isFocused) {
-      editor.commands.setContent(content, { emitUpdate: false });
+    if (editor && content !== editor.getHTML()) {
+      if (!editor.isFocused || content === "") {
+        editor.commands.setContent(content, { emitUpdate: false });
+      }
     }
   }, [content, editor]);
 
-  const setLink = useCallback(() => {
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+
+  const openLinkDialog = useCallback(() => {
     if (!editor) return;
-    const previousUrl = editor.getAttributes("link").href;
-    const url = window.prompt("Enter link URL", previousUrl || "https://");
-
-    if (url === null) {
-      return;
-    }
-
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
-
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    const previousUrl = (editor.getAttributes("link").href as string) || "";
+    setLinkUrl(previousUrl);
+    setLinkDialogOpen(true);
   }, [editor]);
+
+  const handleApplyLink = useCallback(() => {
+    if (!editor) return;
+    const trimmed = linkUrl.trim();
+    if (!trimmed) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    } else {
+      const formatted = /^https?:\/\//i.test(trimmed) || trimmed.startsWith("mailto:") ? trimmed : `https://${trimmed}`;
+      editor.chain().focus().extendMarkRange("link").setLink({ href: formatted }).run();
+    }
+    setLinkDialogOpen(false);
+  }, [editor, linkUrl]);
 
   if (!editor) {
     return null;
@@ -244,7 +254,7 @@ export function RichTextEditor({
           icon={<LinkIcon className="size-3.5" />}
           label="Insert Link"
           active={editor.isActive("link")}
-          onClick={setLink}
+          onClick={openLinkDialog}
         />
         {editor.isActive("link") && (
           <ToolbarButton
@@ -262,6 +272,38 @@ export function RichTextEditor({
 
       {/* Editor Editable Area */}
       <EditorContent editor={editor} className="flex-1 overflow-y-auto cursor-text" />
+
+      {/* Insert Link Dialog */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Insert link</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              type="url"
+              placeholder="https://example.com"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleApplyLink();
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setLinkDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleApplyLink}>
+              {linkUrl.trim() ? "Apply" : "Remove link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
