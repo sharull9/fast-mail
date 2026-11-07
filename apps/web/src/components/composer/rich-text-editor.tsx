@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from "@/components/ui/separator";
 
 interface RichTextEditorProps {
   content: string;
@@ -155,7 +154,7 @@ export function RichTextEditor({
       )}
     >
       {/* Editor Formatting Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-border/50 bg-muted/30 px-2 py-1 select-none">
+      <div className="flex items-center gap-0.5 border-b border-border/50 bg-muted/30 px-2 py-1 select-none shrink-0 overflow-x-auto scrollbar-none">
         <ToolbarButton
           icon={<Undo2 className="size-3.5" />}
           label="Undo (Ctrl+Z)"
@@ -169,7 +168,7 @@ export function RichTextEditor({
           disabled={!editor.can().redo()}
         />
 
-        <Separator orientation="vertical" className="mx-1 h-3.5" />
+        <div className="mx-1 h-3.5 w-px shrink-0 bg-border/60 self-center" />
 
         <ToolbarButton
           icon={<Bold className="size-3.5" />}
@@ -202,7 +201,7 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleCode().run()}
         />
 
-        <Separator orientation="vertical" className="mx-1 h-3.5" />
+        <div className="mx-1 h-3.5 w-px shrink-0 bg-border/60 self-center" />
 
         <ToolbarButton
           icon={<Heading1 className="size-3.5" />}
@@ -223,7 +222,7 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         />
 
-        <Separator orientation="vertical" className="mx-1 h-3.5" />
+        <div className="mx-1 h-3.5 w-px shrink-0 bg-border/60 self-center" />
 
         <ToolbarButton
           icon={<List className="size-3.5" />}
@@ -250,7 +249,7 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         />
 
-        <Separator orientation="vertical" className="mx-1 h-3.5" />
+        <div className="mx-1 h-3.5 w-px shrink-0 bg-border/60 self-center" />
 
         <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
           <PopoverTrigger asChild>
@@ -302,7 +301,7 @@ export function RichTextEditor({
       </div>
 
       {/* Editor Editable Area */}
-      <EditorContent editor={editor} className="flex-1 overflow-y-auto cursor-text" />
+      <EditorContent editor={editor} className="flex-1 min-h-0 overflow-y-auto cursor-text" />
     </div>
   );
 }
