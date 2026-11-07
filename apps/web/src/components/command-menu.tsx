@@ -55,6 +55,7 @@ export function CommandMenu({
   onToggleSidebar,
   onPairBrowser,
   onKeyboardShortcuts,
+  onCompose,
   initialQuery,
 }: {
   open: boolean;
@@ -63,6 +64,7 @@ export function CommandMenu({
   onToggleSidebar: () => void;
   onPairBrowser: () => void;
   onKeyboardShortcuts: () => void;
+  onCompose?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -122,6 +124,19 @@ export function CommandMenu({
         run: () => goLabel(label.id),
         disabled: false,
       })),
+    {
+      id: "global:compose",
+      name: "Compose message",
+      token: "compose",
+      keywords: ["compose", "new", "email", "write", "send"],
+      icon: "compose",
+      shortcut: "compose",
+      run: () => {
+        onClose();
+        onCompose?.();
+      },
+      disabled: !onCompose,
+    },
     {
       id: "global:sync",
       name: "Sync mail",

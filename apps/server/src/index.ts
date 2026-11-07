@@ -6,11 +6,13 @@ import { openAppStore } from "@mailfast/db";
 import { env } from "@mailfast/env/server";
 import {
   AUTH_HEADER,
+  sendMessageRequestSchema,
+  threadActionsRequestSchema,
   type ConnectionStatus,
   type ListThreadsResponse,
   type PairingGrant,
+  type SendMessageResponse,
   type ServerDescriptor,
-  type ThreadAction,
   type ThreadDetail,
 } from "@mailfast/shared";
 import { Auth, AuthError } from "@/auth.ts";
@@ -121,19 +123,6 @@ const browserSessions = new SessionStore(
 // Better Auth needs the final origin (for the OAuth redirect URI), so these are created once the port is bound.
 let auth!: Auth;
 let accounts!: Accounts;
-
-const ACTIONS = new Set<ThreadAction["kind"]>([
-  "archive",
-  "inbox",
-  "trash",
-  "untrash",
-  "read",
-  "unread",
-  "star",
-  "unstar",
-  "important",
-  "unimportant",
-]);
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}) {
   return Response.json(data, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -456,12 +445,47 @@ try {
 
         // ---- writes (optimistic + outbox)
         if (path === "/api/threads/actions" && req.method === "POST") {
-          const b = await body<{ threadIds?: string[]; action?: ThreadAction }>(req);
-          if (!b.action || !ACTIONS.has(b.action.kind) || !Array.isArray(b.threadIds) || b.threadIds.length === 0) {
-            return json({ error: "bad request" }, 400);
+          const parsed = threadActionsRequestSchema.safeParse(await req.json().catch(() => null));
+          if (!parsed.success) {
+            return json({ error: parsed.error.issues[0]?.message ?? "bad request" }, 400);
           }
+          const b = parsed.data;
           sync.applyAction(b.threadIds.slice(0, 500), b.action);
           return json({ threads: b.threadIds.map((id) => store.getThread(id)?.thread).filter(Boolean) });
+        }
+
+        // ---- send message
+        if (path === "/api/messages/send" && req.method === "POST") {
+          const parsed = sendMessageRequestSchema.safeParse(await req.json().catch(() => null));
+          if (!parsed.success) {
+            return json({ error: parsed.error.issues[0]?.message ?? "Invalid message request" }, 400);
+          }
+          const b = parsed.data;
+          const runtime = accounts.resolve(req);
+          if (!runtime.gmail) return json({ error: "Gmail client not available" }, 500);
+
+          const sent = await runtime.gmail.sendMessage({
+            to: b.to,
+            cc: b.cc,
+            bcc: b.bcc,
+            subject: b.subject,
+            bodyHtml: b.bodyHtml || `<p>${b.bodyText ?? ""}</p>`,
+            bodyText: b.bodyText,
+            threadId: b.threadId,
+            inReplyTo: b.inReplyTo,
+            references: b.references,
+            attachments: b.attachments,
+          });
+
+          if (sent.threadId) {
+            try {
+              await runtime.sync.ensureThread(sent.threadId, true);
+            } catch (err) {
+              console.warn("[send] failed to immediately sync thread:", err);
+            }
+          }
+
+          return json(sent satisfies SendMessageResponse);
         }
 
         // ---- prefetch hints from the UI (hover / keyboard focus / visible rows)

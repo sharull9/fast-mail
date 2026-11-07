@@ -80,6 +80,10 @@ export const appHotkeys = defineAppHotkeys({
     hotkey: "Mod+A",
     meta: { name: "Select all", description: "Select every visible conversation.", group: "Selection" },
   },
+  compose: {
+    hotkey: "C",
+    meta: { name: "Compose message", description: "Open composer to write a new email.", group: "Actions" },
+  },
   archive: {
     hotkey: "E",
     meta: { name: "Archive", description: "Archive or move to Inbox; advance to the neighbour.", group: "Actions" },

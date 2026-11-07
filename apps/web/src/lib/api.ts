@@ -7,6 +7,8 @@ import type {
   MailAccount,
   PairingGrant,
   PairedBrowser,
+  SendMessageRequest,
+  SendMessageResponse,
   SyncStatus,
   ThreadAction,
   ThreadDetail,
@@ -162,6 +164,8 @@ export const api = {
     call<unknown>("/threads/actions", { json: { threadIds, action }, headers: accountHeaders(accountId) }),
   prefetch: (hint: { threadIds?: string[]; labelIds?: string[] }) =>
     call<{ ok: true }>("/prefetch", { json: hint }).catch(() => undefined),
+  sendMessage: (data: SendMessageRequest, accountId = activeAccountId) =>
+    call<SendMessageResponse>("/messages/send", { json: data, headers: accountHeaders(accountId) }),
   attachmentTicket: (params: { messageId: string; attachmentId: string; filename?: string; mimeType?: string }) =>
     call<{ ticket: string; url: string }>("/attachment-ticket", { json: params }),
 };

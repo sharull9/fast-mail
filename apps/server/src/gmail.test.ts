@@ -91,3 +91,42 @@ test("limiter serves interactive work before background", async () => {
   await Promise.all([bg, ui]);
   expect(order).toEqual(["ui", "bg"]);
 });
+
+test("builds MIME message without attachments", () => {
+  const { buildMimeMessage, htmlToPlainText } = require("@/gmail.ts");
+  const raw = buildMimeMessage({
+    to: ["alice@example.com"],
+    cc: ["bob@example.com"],
+    subject: "Meeting Tomorrow",
+    bodyHtml: "<p>Hi Alice,<br>Let's meet at 10.</p>",
+  });
+
+  expect(raw).toContain("Subject: Meeting Tomorrow");
+  expect(raw).toContain("To: alice@example.com");
+  expect(raw).toContain("Cc: bob@example.com");
+  expect(raw).toContain("Content-Type: multipart/alternative");
+  expect(raw).toContain("Content-Type: text/plain");
+  expect(raw).toContain("Content-Type: text/html");
+
+  expect(htmlToPlainText("<p>Hello<br>World</p>")).toBe("Hello\nWorld");
+});
+
+test("builds MIME message with attachments and utf-8 subject", () => {
+  const { buildMimeMessage } = require("@/gmail.ts");
+  const raw = buildMimeMessage({
+    to: ["recipient@example.com"],
+    subject: "Héllo World 🚀",
+    bodyHtml: "<p>Check the attached note</p>",
+    attachments: [
+      {
+        filename: "test.txt",
+        mimeType: "text/plain",
+        content: Buffer.from("Hello attachment").toString("base64"),
+      },
+    ],
+  });
+
+  expect(raw).toContain("=?UTF-8?B?");
+  expect(raw).toContain("Content-Type: multipart/mixed");
+  expect(raw).toContain('Content-Disposition: attachment; filename="test.txt"');
+});

@@ -1,5 +1,5 @@
 import type { MessageInput } from "@mailfast/db";
-import type { AttachmentMeta, Label } from "@mailfast/shared";
+import type { AttachmentMeta, Label, SendMessageRequest, SendMessageResponse } from "@mailfast/shared";
 import type { Auth } from "@/auth.ts";
 import { Limiter, Priority } from "@/limiter.ts";
 
@@ -22,7 +22,18 @@ const META_QUERY =
   `&fields=${encodeURIComponent(MESSAGE_FIELDS)}`;
 
 // Quota units per method (developers.google.com/gmail/api/reference/quota).
-const UNITS = { get: 5, list: 5, threadGet: 10, history: 2, labels: 1, labelGet: 1, modify: 10, trash: 10, profile: 1 };
+const UNITS = {
+  get: 5,
+  list: 5,
+  threadGet: 10,
+  history: 2,
+  labels: 1,
+  labelGet: 1,
+  modify: 10,
+  trash: 10,
+  profile: 1,
+  send: 100,
+};
 
 export class GmailError extends Error {
   constructor(
@@ -351,6 +362,20 @@ export class Gmail {
   }
 
   /**
+   * Sends an email message through Gmail API (POST /messages/send).
+   */
+  async sendMessage(opts: SendMessageRequest): Promise<SendMessageResponse> {
+    const mime = buildMimeMessage(opts);
+    const raw = Buffer.from(mime, "utf-8").toString("base64url");
+    return this.request<SendMessageResponse>("/messages/send", {
+      method: "POST",
+      body: { raw, threadId: opts.threadId || undefined },
+      units: UNITS.send,
+      priority: Priority.Interactive,
+    });
+  }
+
+  /**
    * Fetches metadata for many messages through the batch endpoint.
    * Missing (404) ids are reported in `gone`; transient failures are retried.
    */
@@ -419,5 +444,126 @@ export class Gmail {
       if (!respBoundary) throw new GmailError(500, "batch response without boundary");
       return parseBatchResponse(await res.text(), respBoundary);
     }
+  }
+}
+
+export function chunkBase64(str: string): string {
+  return str.match(/.{1,76}/g)?.join("\r\n") || str;
+}
+
+export function htmlToPlainText(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<\/p>|<br\s*\/?>|<li>|<\/div>|<\/tr>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n\s*\n/g, "\n\n")
+    .trim();
+}
+
+export function buildMimeMessage(opts: SendMessageRequest): string {
+  const boundaryMixed = `mixed_${crypto.randomUUID()}`;
+  const boundaryAlt = `alt_${crypto.randomUUID()}`;
+
+  const encodeHeaderWord = (str: string) => {
+    if (/[\x80-\xFF\r\n]/.test(str)) {
+      return `=?UTF-8?B?${Buffer.from(str, "utf-8").toString("base64")}?=`;
+    }
+    return str;
+  };
+
+  const headers: string[] = [
+    `MIME-Version: 1.0`,
+    `Date: ${new Date().toUTCString()}`,
+    `Subject: ${encodeHeaderWord(opts.subject)}`,
+  ];
+
+  if (opts.to && opts.to.length > 0) {
+    headers.push(`To: ${opts.to.join(", ")}`);
+  }
+  if (opts.cc && opts.cc.length > 0) {
+    headers.push(`Cc: ${opts.cc.join(", ")}`);
+  }
+  if (opts.bcc && opts.bcc.length > 0) {
+    headers.push(`Bcc: ${opts.bcc.join(", ")}`);
+  }
+  if (opts.inReplyTo) {
+    headers.push(`In-Reply-To: ${opts.inReplyTo}`);
+  }
+  if (opts.references) {
+    headers.push(`References: ${opts.references}`);
+  }
+
+  const plainText = opts.bodyText ?? htmlToPlainText(opts.bodyHtml);
+  const plainBase64 = Buffer.from(plainText, "utf-8").toString("base64");
+  const htmlBase64 = Buffer.from(opts.bodyHtml, "utf-8").toString("base64");
+
+  const hasAttachments = opts.attachments && opts.attachments.length > 0;
+
+  if (hasAttachments) {
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundaryMixed}"`);
+    const parts: string[] = [
+      headers.join("\r\n"),
+      "",
+      `--${boundaryMixed}`,
+      `Content-Type: multipart/alternative; boundary="${boundaryAlt}"`,
+      "",
+      `--${boundaryAlt}`,
+      `Content-Type: text/plain; charset=UTF-8`,
+      `Content-Transfer-Encoding: base64`,
+      "",
+      chunkBase64(plainBase64),
+      "",
+      `--${boundaryAlt}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: base64`,
+      "",
+      chunkBase64(htmlBase64),
+      "",
+      `--${boundaryAlt}--`,
+    ];
+
+    for (const att of opts.attachments!) {
+      const cleanData = att.content.replace(/^data:.*?;base64,/, "");
+      const safeFilename = att.filename.replace(/["\r\n]/g, "_");
+      parts.push(
+        `--${boundaryMixed}`,
+        `Content-Type: ${att.mimeType || "application/octet-stream"}; name="${safeFilename}"`,
+        `Content-Disposition: attachment; filename="${safeFilename}"`,
+        `Content-Transfer-Encoding: base64`,
+        "",
+        chunkBase64(cleanData),
+      );
+    }
+    parts.push(`--${boundaryMixed}--`, "");
+    return parts.join("\r\n");
+  } else {
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundaryAlt}"`);
+    const parts: string[] = [
+      headers.join("\r\n"),
+      "",
+      `--${boundaryAlt}`,
+      `Content-Type: text/plain; charset=UTF-8`,
+      `Content-Transfer-Encoding: base64`,
+      "",
+      chunkBase64(plainBase64),
+      "",
+      `--${boundaryAlt}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: base64`,
+      "",
+      chunkBase64(htmlBase64),
+      "",
+      `--${boundaryAlt}--`,
+      "",
+    ];
+    return parts.join("\r\n");
   }
 }

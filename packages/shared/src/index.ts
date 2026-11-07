@@ -1,4 +1,5 @@
 // Types shared by the Bun server (apps/server) and the web UI (apps/web).
+import { z } from "zod";
 
 export const AUTH_HEADER = "x-mailfast-token";
 
@@ -162,17 +163,26 @@ export interface AuthStatus {
   account: string | null;
 }
 
-export type ThreadAction =
-  | { kind: "archive" }
-  | { kind: "inbox" }
-  | { kind: "trash" }
-  | { kind: "untrash" }
-  | { kind: "read" }
-  | { kind: "unread" }
-  | { kind: "star" }
-  | { kind: "unstar" }
-  | { kind: "important" }
-  | { kind: "unimportant" };
+export const threadActionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("archive") }),
+  z.object({ kind: z.literal("inbox") }),
+  z.object({ kind: z.literal("trash") }),
+  z.object({ kind: z.literal("untrash") }),
+  z.object({ kind: z.literal("read") }),
+  z.object({ kind: z.literal("unread") }),
+  z.object({ kind: z.literal("star") }),
+  z.object({ kind: z.literal("unstar") }),
+  z.object({ kind: z.literal("important") }),
+  z.object({ kind: z.literal("unimportant") }),
+]);
+
+export type ThreadAction = z.infer<typeof threadActionSchema>;
+
+export const threadActionsRequestSchema = z.object({
+  threadIds: z.array(z.string()).min(1, "threadIds must not be empty"),
+  action: threadActionSchema,
+});
+export type ThreadActionsRequest = z.infer<typeof threadActionsRequestSchema>;
 
 /** Label deltas each action applies. Used by the server and for optimistic UI. */
 export function actionDelta(action: ThreadAction): { add: string[]; remove: string[] } {
@@ -234,3 +244,32 @@ export interface ListThreadsResponse {
   /** Number of cached threads in the requested range (before applying limit). */
   total?: number;
 }
+
+export const sendMessageAttachmentSchema = z.object({
+  filename: z.string().min(1, "Attachment filename is required"),
+  mimeType: z.string().default("application/octet-stream"),
+  content: z.string().min(1, "Attachment content is required"), // base64-encoded string
+  size: z.number().optional(),
+});
+export type SendMessageAttachment = z.infer<typeof sendMessageAttachmentSchema>;
+
+export const sendMessageRequestSchema = z.object({
+  to: z.array(z.string().min(1)).min(1, "At least one recipient is required"),
+  cc: z.array(z.string().min(1)).optional(),
+  bcc: z.array(z.string().min(1)).optional(),
+  subject: z.string().min(1, "Subject is required"),
+  bodyHtml: z.string().default(""),
+  bodyText: z.string().optional(),
+  threadId: z.string().optional(),
+  inReplyTo: z.string().optional(),
+  references: z.string().optional(),
+  attachments: z.array(sendMessageAttachmentSchema).optional(),
+});
+export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
+
+export const sendMessageResponseSchema = z.object({
+  id: z.string(),
+  threadId: z.string(),
+  labelIds: z.array(z.string()).optional(),
+});
+export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;

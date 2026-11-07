@@ -33,13 +33,17 @@ import {
   FileArchive,
   FileCode,
   FileText,
+  Forward,
   Image,
   Loader2,
   Mail,
   MoreHorizontal,
   Paperclip,
+  Reply,
+  ReplyAll,
   X,
 } from "lucide-react";
+import { ComposerPanel, useComposer } from "@/components/composer";
 import { MailAvatar } from "@/components/mail-avatar";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -76,6 +80,59 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
       act([threadId], { kind: "read" });
     }
   }, [data?.thread.unread, threadId]);
+
+  const { openComposer, isOpen: isComposerOpen, mode: composerMode, draft } = useComposer();
+  const isInlineComposerActive = isComposerOpen && composerMode === "fixed" && draft.threadId === threadId;
+
+  const handleReply = useCallback(
+    (message: MessageMeta, replyAll = false, mode: "fixed" | "floating" = "fixed") => {
+      const to = [message.from.email];
+      let cc: string[] = [];
+      if (replyAll) {
+        const allTo = parseAddresses(message.to).map((p) => p.email);
+        const allCc = parseAddresses(message.cc).map((p) => p.email);
+        const myEmail = account.toLowerCase();
+        cc = [...new Set([...allTo, ...allCc])].filter(
+          (email) => email.toLowerCase() !== myEmail && !to.map((t) => t.toLowerCase()).includes(email.toLowerCase()),
+        );
+      }
+      const threadSubject = data?.thread.subject || "(no subject)";
+      const subjectPrefix = threadSubject.toLowerCase().startsWith("re:") ? "" : "Re: ";
+      openComposer(
+        {
+          to,
+          cc,
+          subject: `${subjectPrefix}${threadSubject}`,
+          threadId,
+          inReplyTo: message.id,
+          references: message.id,
+          bodyHtml: "",
+        },
+        mode,
+      );
+    },
+    [account, data?.thread.subject, openComposer, threadId],
+  );
+
+  const handleForward = useCallback(
+    (message: MessageMeta, mode: "fixed" | "floating" = "floating") => {
+      const threadSubject = data?.thread.subject || "(no subject)";
+      const subjectPrefix = threadSubject.toLowerCase().startsWith("fwd:") ? "" : "Fwd: ";
+      const forwardedHeader = `<br><br>---------- Forwarded message ---------<br>From: ${message.from.name ? `${message.from.name} &lt;${message.from.email}&gt;` : message.from.email}<br>Date: ${new Date(message.date).toLocaleString()}<br>Subject: ${threadSubject}<br>To: ${message.to}<br><br>`;
+      openComposer(
+        {
+          to: [],
+          subject: `${subjectPrefix}${threadSubject}`,
+          threadId,
+          inReplyTo: message.id,
+          references: message.id,
+          bodyHtml: `${forwardedHeader}${message.bodyHtml || message.bodyText || ""}`,
+        },
+        mode,
+      );
+    },
+    [data?.thread.subject, openComposer, threadId],
+  );
 
   if (isPending)
     return (
@@ -248,9 +305,59 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
               onPreview={setPreviewAttachment}
               gmailUrl={gmailUrl}
               paneId={paneId}
+              onReply={(replyAll) => handleReply(m, replyAll, "fixed")}
+              onForward={() => handleForward(m, "floating")}
             />
           ))}
         </ol>
+
+        {/* Bottom Reply Bar or Inline Fixed Composer */}
+        {isInlineComposerActive ? (
+          <div className="mt-6 pt-4 border-t border-border/50">
+            <ComposerPanel mode="fixed" />
+          </div>
+        ) : (
+          <div className="mt-6 pt-4 border-t border-border/50">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs font-medium"
+                onClick={() => {
+                  const last = data.messages[data.messages.length - 1];
+                  if (last) handleReply(last, false, "fixed");
+                }}
+              >
+                <Reply className="size-3.5" />
+                Reply
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs font-medium"
+                onClick={() => {
+                  const last = data.messages[data.messages.length - 1];
+                  if (last) handleReply(last, true, "fixed");
+                }}
+              >
+                <ReplyAll className="size-3.5" />
+                Reply All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs font-medium"
+                onClick={() => {
+                  const last = data.messages[data.messages.length - 1];
+                  if (last) handleForward(last, "floating");
+                }}
+              >
+                <Forward className="size-3.5" />
+                Forward
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       {allAttachments.length > 0 && (
         <div className="sticky bottom-0 z-10 mt-auto bg-background/95 backdrop-blur-xs">
@@ -854,6 +961,8 @@ function ThreadMessageItem({
   onPreview,
   gmailUrl,
   paneId,
+  onReply,
+  onForward,
 }: {
   message: MessageMeta;
   account: string;
@@ -861,6 +970,8 @@ function ThreadMessageItem({
   onPreview: (attachment: ThreadAttachment) => void;
   gmailUrl: string;
   paneId?: string;
+  onReply?: (replyAll: boolean) => void;
+  onForward?: () => void;
 }) {
   const [expanded, setExpandedState] = useState(() => {
     return messageExpandedOverrides.has(m.id) ? messageExpandedOverrides.get(m.id)! : defaultExpanded;
@@ -900,6 +1011,42 @@ function ThreadMessageItem({
             <MessageHeader message={m} account={account} />
           </div>
           <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            {expanded && (
+              <>
+                <IconButton
+                  label="Reply to message"
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => onReply?.(false)}
+                >
+                  <Reply className="size-3.5" />
+                </IconButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="More message actions"
+                      className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted"
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-36">
+                    <DropdownMenuItem onSelect={() => onReply?.(false)}>
+                      <Reply className="size-3.5 mr-2" />
+                      Reply
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onReply?.(true)}>
+                      <ReplyAll className="size-3.5 mr-2" />
+                      Reply All
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onForward?.()}>
+                      <Forward className="size-3.5 mr-2" />
+                      Forward
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
             {expanded && m.bodyHtml && m.bodyText && (
               <div className="inline-flex rounded-md border border-border/60 p-0.5 text-xs">
                 <button

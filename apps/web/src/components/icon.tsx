@@ -37,6 +37,7 @@ const icons: Record<string, LucideIcon> = {
   unread: MailIcon,
   back: ArrowLeftIcon,
   external: ExternalLinkIcon,
+  compose: SendIcon,
 };
 export function Icon({ name }: { name: string }) {
   const Component = icons[name] ?? TagIcon;

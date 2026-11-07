@@ -49,9 +49,10 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw } from "lucide-react";
+import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw, PenSquare } from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { AppContextMenu } from "@/components/app-context-menu";
+import { ComposerProvider, ComposerPanel, useComposer } from "@/components/composer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SidebarFooter } from "@/components/ui/sidebar";
 import {
@@ -170,16 +171,18 @@ function PairedGate() {
 function Layout() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
   return (
-    <SidebarProvider
-      open={!collapsed}
-      onOpenChange={(open) => {
-        localStorage.setItem("sidebar-collapsed", String(!open));
-        setCollapsed(!open);
-      }}
-      className="mail-app"
-    >
-      <AppContent />
-    </SidebarProvider>
+    <ComposerProvider>
+      <SidebarProvider
+        open={!collapsed}
+        onOpenChange={(open) => {
+          localStorage.setItem("sidebar-collapsed", String(!open));
+          setCollapsed(!open);
+        }}
+        className="mail-app"
+      >
+        <AppContent />
+      </SidebarProvider>
+    </ComposerProvider>
   );
 }
 
@@ -210,11 +213,14 @@ function AppContent() {
       callback: openSearch,
     })),
   );
+  const { openComposer } = useComposer();
   useHotkey(appHotkeys.shortcuts, () => setShortcutsOpen(true));
+  useHotkey(appHotkeys.compose, () => openComposer());
   return (
     <>
       <AppContextMenu>
         <Sidebar
+          onCompose={() => openComposer()}
           onSearch={() => {
             setInitialQuery(undefined);
             setMenuOpen(true);
@@ -242,9 +248,11 @@ function AppContent() {
           onToggleSidebar={toggleSidebar}
           onPairBrowser={() => setPairBrowserOpen(true)}
           onKeyboardShortcuts={() => setShortcutsOpen(true)}
+          onCompose={() => openComposer()}
         />
         <KeyboardShortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <PairBrowserDialog open={pairBrowserOpen} onOpenChange={setPairBrowserOpen} />
+        <ComposerPanel />
       </AppContextMenu>
     </>
   );
@@ -261,10 +269,12 @@ function AccountAvatar({ account }: { account: MailAccount | undefined }) {
 }
 
 function Sidebar({
+  onCompose,
   onSearch,
   onPairBrowser,
   onKeyboardShortcuts,
 }: {
+  onCompose: () => void;
   onSearch: () => void;
   onPairBrowser: () => void;
   onKeyboardShortcuts: () => void;
@@ -414,6 +424,20 @@ function Sidebar({
           aria-label="Expand sidebar"
         />
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              aria-label="Compose message"
+              className="rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center shadow-xs"
+              onClick={onCompose}
+              tooltip={`Compose message (${shortcutLabel("compose")})`}
+            >
+              <PenSquare className="size-4 shrink-0" />
+              <span className="font-medium">Compose</span>
+              <kbd className="ml-auto text-xs opacity-75 group-data-[collapsible=icon]:hidden">
+                {shortcutLabel("compose")}
+              </kbd>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Search mail"
