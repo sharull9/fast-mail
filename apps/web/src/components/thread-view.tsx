@@ -134,6 +134,30 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
     [data?.thread.subject, openComposer, threadId],
   );
 
+  const [previewAttachment, setPreviewAttachment] = useState<ThreadAttachment | null>(null);
+
+  const allAttachments = useMemo(() => {
+    if (!data?.messages) return [];
+    const list: ThreadAttachment[] = [];
+    for (const m of data.messages) {
+      if (m.attachments && m.attachments.length > 0) {
+        for (const att of m.attachments) {
+          list.push({
+            ...att,
+            messageId: m.id,
+            fromName: m.from.name || m.from.email,
+            date: m.date,
+          });
+        }
+      }
+    }
+    return list;
+  }, [data?.messages]);
+
+  const totalAttachmentBytes = useMemo(() => {
+    return allAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+  }, [allAttachments]);
+
   if (isPending)
     return (
       <div className="pane h-full" aria-label="Loading conversation">
@@ -182,28 +206,6 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
   const gmailUrl = `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${threadId}`;
   const inInbox = t.labelIds.includes("INBOX");
   const inTrash = t.labelIds.includes("TRASH");
-  const [previewAttachment, setPreviewAttachment] = useState<ThreadAttachment | null>(null);
-
-  const allAttachments = useMemo(() => {
-    const list: ThreadAttachment[] = [];
-    for (const m of data.messages) {
-      if (m.attachments && m.attachments.length > 0) {
-        for (const att of m.attachments) {
-          list.push({
-            ...att,
-            messageId: m.id,
-            fromName: m.from.name || m.from.email,
-            date: m.date,
-          });
-        }
-      }
-    }
-    return list;
-  }, [data.messages]);
-
-  const totalAttachmentBytes = useMemo(() => {
-    return allAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
-  }, [allAttachments]);
 
   return (
     // The reading pane is its own size container: it is resizable, so its layout follows its width, not the window's.
