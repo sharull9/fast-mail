@@ -483,6 +483,16 @@ kbd {
   cursor: pointer;
   user-select: none;
 }
+.row::after {
+  content: "";
+  position: absolute;
+  right: -9px;
+  bottom: -3px;
+  left: -9px;
+  height: 1px;
+  background: color-mix(in oklab, var(--border) 60%, transparent);
+  pointer-events: none;
+}
 .row:hover,
 .row:focus-within {
   --row-border: var(--border);
