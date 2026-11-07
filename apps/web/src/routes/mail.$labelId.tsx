@@ -72,7 +72,8 @@ const tabCompact: Record<number, { trigger: string; hide: string; dot: string }>
   },
 };
 
-import { EmptyPreview } from "@/components/empty-preview";
+import { PreviewWorkspaceProvider, PreviewWorkspace } from "@/components/preview-workspace";
+import { usePreviewWorkspace } from "@/hooks/use-preview-workspace";
 
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
@@ -105,7 +106,17 @@ export const Route = createFileRoute("/mail/$labelId")({
 });
 
 function Mailbox() {
+  return (
+    <PreviewWorkspaceProvider>
+      <MailboxContent />
+    </PreviewWorkspaceProvider>
+  );
+}
+
+function MailboxContent() {
   const { labelId } = Route.useParams();
+
+  const { focusedPaneId, rows, setThreadId } = usePreviewWorkspace();
 
   const search = Route.useSearch();
   const { data: status } = useQuery(statusQuery);
@@ -123,6 +134,20 @@ function Mailbox() {
   const navigate = useNavigate();
 
   const isMobile = useIsMobile();
+
+  const focusedPane = useMemo(() => {
+    for (const row of rows) {
+      const p = row.panes.find((pane) => pane.id === focusedPaneId);
+      if (p) return p;
+    }
+    return null;
+  }, [rows, focusedPaneId]);
+
+  useEffect(() => {
+    if (threadId && focusedPane && focusedPane.threadId !== threadId) {
+      setThreadId(focusedPaneId, threadId);
+    }
+  }, [threadId, focusedPane, focusedPaneId, setThreadId]);
 
   useEffect(() => {
     if (search.from === range.from && search.to === range.to) return;
@@ -148,11 +173,17 @@ function Mailbox() {
   });
 
   const open = useCallback(
-    (id: string) => void navigate({ to: "/mail/$labelId/$threadId", params: { labelId, threadId: id }, replace: true }),
-    [navigate, labelId],
+    (id: string) => {
+      setThreadId(focusedPaneId, id);
+      void navigate({ to: "/mail/$labelId/$threadId", params: { labelId, threadId: id }, replace: true });
+    },
+    [navigate, labelId, focusedPaneId, setThreadId],
   );
 
-  const close = useCallback(() => void navigate({ to: "/mail/$labelId", params: { labelId } }), [navigate, labelId]);
+  const close = useCallback(() => {
+    setThreadId(focusedPaneId, null);
+    void navigate({ to: "/mail/$labelId", params: { labelId } });
+  }, [navigate, labelId, focusedPaneId, setThreadId]);
 
   const more = useCallback(() => void loadMore(labelId, bounds), [labelId, bounds]);
 
@@ -280,7 +311,7 @@ function Mailbox() {
         <ResizableHandle />
 
         <ResizablePanel id="preview" defaultSize="60%" minSize="30%">
-          {threadId ? <Outlet /> : <EmptyPreview />}
+          <PreviewWorkspace onClose={close} />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

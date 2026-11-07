@@ -28,7 +28,15 @@ import { cn } from "@/lib/utils";
  * each message shows sender, recipients, date and Gmail's snippet, with a
  * one-click jump to the full thread in Gmail.
  */
-export function ThreadView({ threadId, onClose }: { threadId: string; onClose: () => void }) {
+export function ThreadView({
+  threadId,
+  paneId,
+  onClose,
+}: {
+  threadId: string;
+  paneId?: string;
+  onClose: () => void;
+}) {
   const { data, isPending, error } = useQuery(threadQuery(threadId));
   const account = useQuery(authQuery).data?.account ?? "";
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
@@ -47,7 +55,18 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
       <div className="pane h-full" aria-label="Loading conversation">
         <div className="toolbar">
           <Skeleton className="h-7 w-40" />
-          <IconButton className="ml-auto" label="Close conversation" onClick={onClose}>
+          <div
+            className="flex-1 h-full min-w-4 cursor-grab active:cursor-grabbing self-stretch select-none"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("application/mailfast-thread", threadId);
+              if (paneId) {
+                e.dataTransfer.setData("application/mailfast-source-pane", paneId);
+              }
+              e.dataTransfer.effectAllowed = "move";
+            }}
+          />
+          <IconButton label="Close conversation" onClick={onClose}>
             <X />
           </IconButton>
         </div>
@@ -136,7 +155,20 @@ export function ThreadView({ threadId, onClose }: { threadId: string; onClose: (
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <IconButton className="ml-auto" label="Close conversation" onClick={onClose}>
+        {/* Empty space in header acts as draggable handler to move or split space */}
+        <div
+          className="flex-1 h-full min-w-4 cursor-grab active:cursor-grabbing self-stretch select-none"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("application/mailfast-thread", threadId);
+            if (paneId) {
+              e.dataTransfer.setData("application/mailfast-source-pane", paneId);
+            }
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          title="Drag to split or move space"
+        />
+        <IconButton label="Close conversation" onClick={onClose}>
           <X />
         </IconButton>
       </div>

@@ -514,8 +514,14 @@ const Row = memo(function Row({
           aria-label={`${sendersLabel(t.senders, t.messageCount)}, ${t.subject || "(no subject)"}${t.important ? ", important" : ""}`}
           aria-selected={checked}
           tabIndex={0}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("application/mailfast-thread", t.id);
+            e.dataTransfer.setData("text/plain", t.id);
+            e.dataTransfer.effectAllowed = "copyMove";
+          }}
           className={cn(
-            "row group",
+            "row group cursor-grab active:cursor-grabbing",
             (opened || checked) && "selected",
             opened && "opened",
             t.unread && "unread",
