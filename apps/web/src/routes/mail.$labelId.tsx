@@ -28,6 +28,8 @@ import {
 
 import { threadDateRange, labelName, SCOPES, validateDateRange } from "@/lib/format";
 
+import { cn } from "@/lib/utils";
+
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info, Inbox, Layers, Users, type LucideIcon } from "lucide-react";
@@ -38,6 +40,36 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   INBOX_PRIMARY: Inbox,
   INBOX_SOCIAL: Users,
   INBOX_UPDATES: Info,
+};
+
+// Tabs collapse to icons one at a time as the list panel narrows: Updates first, All last.
+const TAB_BELOW: Record<string, number> = {
+  INBOX: 24,
+  INBOX_PRIMARY: 26,
+  INBOX_SOCIAL: 28,
+  INBOX_UPDATES: 30,
+};
+const tabCompact: Record<number, { trigger: string; hide: string; dot: string }> = {
+  24: {
+    trigger: "@max-sm:px-2",
+    hide: "@max-sm:hidden",
+    dot: "@max-sm:block",
+  },
+  26: {
+    trigger: "@max-[26rem]:px-2",
+    hide: "@max-[26rem]:hidden",
+    dot: "@max-[26rem]:block",
+  },
+  28: {
+    trigger: "@max-md:px-2",
+    hide: "@max-md:hidden",
+    dot: "@max-md:block",
+  },
+  30: {
+    trigger: "@max-[30rem]:px-2",
+    hide: "@max-[30rem]:hidden",
+    dot: "@max-[30rem]:block",
+  },
 };
 
 import { EmptyPreview } from "@/components/empty-preview";
@@ -141,21 +173,26 @@ function Mailbox() {
         {INBOX_TABS.map((tab) => {
           const TabIcon = TAB_ICONS[tab.id] ?? Inbox;
           const unread = labels.find((l) => l.id === categoryId(tab.id))?.unread ?? 0;
-          // Sized by the list panel (container query on .list-col), not the window: below 30rem the
-          // tabs collapse to icons, the count becomes a dot, and the name moves into the tooltip.
+          const compact = tabCompact[TAB_BELOW[tab.id] ?? 30];
+          // Sized by the list panel (container query on .list-col), not the window: as the panel
+          // narrows each tab collapses to an icon at its own width, the count becomes a dot,
+          // and the name moves into the tooltip.
           return (
             // The tooltip wraps the tab's content, not the tab: TooltipTrigger would overwrite the tab's
             // data-state="active" (it sets its own data-state), which is what styles the selected tab.
-            <TabsTrigger key={tab.id} value={tab.id} aria-label={tab.name} className="relative @max-[30rem]:px-2">
+            <TabsTrigger key={tab.id} value={tab.id} aria-label={tab.name} className={cn("relative", compact.trigger)}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex items-center gap-1.5">
                     <TabIcon aria-hidden="true" className="size-3.5 shrink-0" />
-                    <span className="@max-[30rem]:hidden">{tab.name}</span>
+                    <span className={compact.hide}>{tab.name}</span>
                     {unread > 0 && (
                       <span
                         aria-hidden="true"
-                        className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium text-muted-foreground tabular-nums group-data-[state=active]/tab:bg-primary/20 group-data-[state=active]/tab:text-primary @max-[30rem]:hidden"
+                        className={cn(
+                          "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium text-muted-foreground tabular-nums group-data-[state=active]/tab:bg-primary/20 group-data-[state=active]/tab:text-primary",
+                          compact.hide,
+                        )}
                       >
                         {unread}
                       </span>
@@ -167,7 +204,10 @@ function Mailbox() {
               {unread > 0 && (
                 <span
                   aria-hidden="true"
-                  className="absolute top-1 right-1 hidden size-1.5 rounded-full bg-primary @max-[30rem]:block"
+                  className={cn(
+                    "absolute top-1 right-1 hidden size-1.5 rounded-full bg-primary",
+                    compact.dot,
+                  )}
                 />
               )}
             </TabsTrigger>

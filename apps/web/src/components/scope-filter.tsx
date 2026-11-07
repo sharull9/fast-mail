@@ -4,19 +4,54 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
+// `below` is the .list-col container width (rem) under which the badge collapses to an
+// icon circle. Scopes collapse one at a time — Important first, Inbox last — instead of
+// all at once. `activeBelow` keeps the selected scope labeled a little longer.
 const scopes = [
-  { id: "INBOX", name: "Inbox", icon: Inbox },
-  { id: "ALL", name: "All mail", icon: Mails },
-  { id: "STARRED", name: "Starred", icon: Star },
-  { id: "IMPORTANT", name: "Important", icon: CircleAlert },
+  { id: "INBOX", name: "Inbox", icon: Inbox, below: 28, activeBelow: 24 },
+  { id: "ALL", name: "All mail", icon: Mails, below: 32, activeBelow: 28 },
+  { id: "STARRED", name: "Starred", icon: Star, below: 40, activeBelow: 36 },
+  { id: "IMPORTANT", name: "Important", icon: CircleAlert, below: 44, activeBelow: 40 },
 ];
 
 export const filterBadge =
   "relative h-7 gap-1.5 rounded-full border border-border px-2.5 text-[12px] text-muted-foreground hover:text-foreground [&_svg]:size-3.5";
-/** Narrow list panel (< 32rem): badges collapse to 28px icon circles; names and counts move to tooltips. */
-export const compactFilterBadge = "@max-lg:w-7 @max-lg:justify-center @max-lg:px-0";
-export const compactHidden = "@max-lg:hidden";
 export const activeFilterBadge = "border-primary/30 bg-primary/15 text-primary";
+
+/** Icon-circle collapse classes for filter badges, keyed by container width in rem.
+ *  Each control picks its own step so items collapse progressively as the panel narrows. */
+export const badgeCompact: Record<number, { btn: string; hide: string; dot: string }> = {
+  24: {
+    btn: "@max-sm:w-7 @max-sm:justify-center @max-sm:px-0",
+    hide: "@max-sm:hidden",
+    dot: "@max-sm:block",
+  },
+  28: {
+    btn: "@max-md:w-7 @max-md:justify-center @max-md:px-0",
+    hide: "@max-md:hidden",
+    dot: "@max-md:block",
+  },
+  32: {
+    btn: "@max-lg:w-7 @max-lg:justify-center @max-lg:px-0",
+    hide: "@max-lg:hidden",
+    dot: "@max-lg:block",
+  },
+  36: {
+    btn: "@max-xl:w-7 @max-xl:justify-center @max-xl:px-0",
+    hide: "@max-xl:hidden",
+    dot: "@max-xl:block",
+  },
+  40: {
+    btn: "@max-[40rem]:w-7 @max-[40rem]:justify-center @max-[40rem]:px-0",
+    hide: "@max-[40rem]:hidden",
+    dot: "@max-[40rem]:block",
+  },
+  44: {
+    btn: "@max-[44rem]:w-7 @max-[44rem]:justify-center @max-[44rem]:px-0",
+    hide: "@max-[44rem]:hidden",
+    dot: "@max-[44rem]:block",
+  },
+};
 
 export function ScopeFilter({
   labelId,
@@ -34,7 +69,9 @@ export function ScopeFilter({
       aria-label="Mail scope"
       className="flex min-w-0 items-center gap-1 overflow-x-auto scrollbar-none"
     >
-      {scopes.map(({ id, name, icon: Icon }, index) => {
+      {scopes.map(({ id, name, icon: Icon, below, activeBelow }, index) => {
+        const isActive = active === id;
+        const compact = badgeCompact[isActive ? activeBelow : below];
         const unread = labels.find((label) => label.id === id)?.unread ?? 0;
         return (
           <Tooltip key={id}>
@@ -43,10 +80,10 @@ export function ScopeFilter({
                 variant="ghost"
                 size="sm"
                 role="radio"
-                aria-checked={active === id}
-                tabIndex={active === id ? 0 : -1}
+                aria-checked={isActive}
+                tabIndex={isActive ? 0 : -1}
                 aria-label={unread > 0 ? `${name}, ${unread} unread` : name}
-                className={cn(filterBadge, compactFilterBadge, active === id && activeFilterBadge)}
+                className={cn(filterBadge, compact.btn, isActive && activeFilterBadge)}
                 onClick={() => onChange(id)}
                 onKeyDown={(event) => {
                   const step =
@@ -72,14 +109,14 @@ export function ScopeFilter({
                 }}
               >
                 <Icon aria-hidden="true" />
-                <span className={compactHidden}>{name}</span>
+                <span className={compact.hide}>{name}</span>
                 {unread > 0 && (
                   <>
                     <span
                       className={cn(
                         "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[10px] leading-none font-medium tabular-nums",
-                        compactHidden,
-                        active === id && "bg-primary/20 text-primary",
+                        compact.hide,
+                        isActive && "bg-primary/20 text-primary",
                       )}
                     >
                       {unread}
@@ -87,7 +124,10 @@ export function ScopeFilter({
                     {/* Compact mode: a notification dot replaces the count. */}
                     <span
                       aria-hidden="true"
-                      className="absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background @max-lg:block"
+                      className={cn(
+                        "absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background",
+                        compact.dot,
+                      )}
                     />
                   </>
                 )}

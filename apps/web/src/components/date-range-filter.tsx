@@ -7,7 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { activeFilterBadge, compactFilterBadge, compactHidden, filterBadge } from "@/components/scope-filter";
+import { activeFilterBadge, badgeCompact, filterBadge } from "@/components/scope-filter";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { clampDateRange, dateParam, localDate, type DateRange } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -66,6 +66,9 @@ export function DateRangeFilter({ range, onChange }: { range: DateRange; onChang
   console.log(oldestMessageDate, "oldest");
   const today = localDate(dateParam(new Date()));
   const active = !!(range.from || range.to);
+  // Staged collapse: the date badge becomes an icon between the scope badges' steps,
+  // and keeps its label a little longer while a range is applied.
+  const compact = badgeCompact[active ? 32 : 36];
   const label =
     range.from && range.to
       ? `${compactDate.format(localDate(range.from))} – ${compactDate.format(localDate(range.to))}`
@@ -98,14 +101,17 @@ export function DateRangeFilter({ range, onChange }: { range: DateRange; onChang
                 variant="ghost"
                 size="sm"
                 aria-label={`Date range: ${label}`}
-                className={cn(filterBadge, compactFilterBadge, active && activeFilterBadge)}
+                className={cn(filterBadge, compact.btn, active && activeFilterBadge)}
               >
                 <CalendarIcon aria-hidden="true" />
-                <span className={compactHidden}>{label}</span>
+                <span className={compact.hide}>{label}</span>
                 {active && (
                   <span
                     aria-hidden="true"
-                    className="absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background @max-lg:block"
+                    className={cn(
+                      "absolute top-0.5 right-0.5 hidden size-1.5 rounded-full bg-primary ring-2 ring-background",
+                      compact.dot,
+                    )}
                   />
                 )}
               </Button>

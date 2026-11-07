@@ -369,7 +369,7 @@ export function ThreadList({
         ) : (
           <span
             className={cn(
-              "ml-auto shrink-0 whitespace-nowrap text-muted-foreground tabular-nums @max-[26rem]:hidden",
+              "ml-auto shrink-0 whitespace-nowrap text-muted-foreground tabular-nums @max-[30rem]:hidden",
               // Next to the inbox category tabs the count only fits in a wider list panel.
               toolbarStart && "@max-xl:hidden",
             )}
