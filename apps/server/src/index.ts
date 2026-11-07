@@ -419,6 +419,11 @@ try {
           const limit = Math.min(Number(url.searchParams.get("limit") ?? 200), 1000);
           return json({ threads: store.searchThreads(q, limit), hasMore: false } satisfies ListThreadsResponse);
         }
+        if (path === "/api/contacts" && req.method === "GET") {
+          const q = url.searchParams.get("q") ?? "";
+          const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 50);
+          return json(store.searchContacts(q, limit));
+        }
         const threadMatch = path.match(/^\/api\/threads\/([\w-]+)$/);
         if (threadMatch && req.method === "GET") {
           const id = threadMatch[1]!;
@@ -483,6 +488,10 @@ try {
             } catch (err) {
               console.warn("[send] failed to immediately sync thread:", err);
             }
+          }
+
+          for (const addr of [...b.to, ...(b.cc ?? []), ...(b.bcc ?? [])]) {
+            runtime.store.recordContact(addr);
           }
 
           return json(sent satisfies SendMessageResponse);

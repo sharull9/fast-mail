@@ -427,13 +427,15 @@ function Sidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Compose message"
-              className="rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center shadow-xs"
+              className="rounded-lg bg-primary !text-primary-foreground font-semibold hover:!bg-primary/85 hover:!text-primary-foreground active:!bg-primary/95 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center shadow-xs [&>svg]:!text-primary-foreground"
               onClick={onCompose}
               tooltip={`Compose message (${shortcutLabel("compose")})`}
             >
-              <PenSquare className="size-4 shrink-0" />
-              <span className="font-medium group-data-[collapsible=icon]:hidden">Compose</span>
-              <kbd className="ml-auto text-xs opacity-75 group-data-[collapsible=icon]:hidden">
+              <PenSquare className="size-4 shrink-0 !text-primary-foreground" />
+              <span className="font-semibold !text-primary-foreground group-data-[collapsible=icon]:hidden">
+                Compose
+              </span>
+              <kbd className="ml-auto text-xs !text-primary-foreground/75 font-semibold group-data-[collapsible=icon]:hidden">
                 {shortcutLabel("compose")}
               </kbd>
             </SidebarMenuButton>

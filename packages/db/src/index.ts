@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type {
   AttachmentMeta,
+  Contact,
   Label,
   MessageMeta,
   Participant,
@@ -14,7 +15,7 @@ import type {
 } from "@mailfast/shared";
 import { inboxCategoryLabel, isInboxCategory, NON_PRIMARY_CATEGORY_LABELS } from "@mailfast/shared";
 import * as schema from "./schema.ts";
-import { account, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
+import { account, contacts, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
 
 export * as schema from "./schema.ts";
 /** Better Auth tables keyed by model name, for `drizzleAdapter(db, { schema: authSchema })`. */
@@ -134,6 +135,57 @@ export function openMailStore(opts: OpenOptions) {
 
   // The thread/date index cannot serve an account-wide MIN(internal_date).
   sqlite.exec("CREATE INDEX IF NOT EXISTS messages_date ON messages (internal_date)");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      email TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      last_seen INTEGER NOT NULL,
+      count INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS contacts_search ON contacts (email, name);
+    INSERT OR IGNORE INTO contacts (email, name, last_seen, count)
+    SELECT lower(from_email), from_name, max(internal_date), count(*)
+    FROM messages
+    WHERE from_email != '' AND from_email LIKE '%@%'
+    GROUP BY lower(from_email);
+  `);
+
+  const upsertContactStmt = sqlite.prepare(`
+    INSERT INTO contacts (email, name, last_seen, count)
+    VALUES (?, ?, ?, 1)
+    ON CONFLICT(email) DO UPDATE SET
+      name = CASE WHEN excluded.name != '' THEN excluded.name ELSE contacts.name END,
+      last_seen = MAX(contacts.last_seen, excluded.last_seen),
+      count = contacts.count + 1
+  `);
+
+  function recordContact(email: string, name = "", date = Date.now()) {
+    const cleanEmail = email.toLowerCase().trim();
+    if (!cleanEmail || !cleanEmail.includes("@") || cleanEmail.length > 254) return;
+    try {
+      upsertContactStmt.run(cleanEmail, name.trim(), date);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function recordAddressHeader(header: string, date: number) {
+    if (!header) return;
+    const parts = header.split(/[,;\n]+/);
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const angleMatch = trimmed.match(/^(?:"?([^"]*)"?\s*)?<([^>]+)>$/);
+      if (angleMatch) {
+        const name = angleMatch[1]?.trim() || "";
+        const email = angleMatch[2]?.trim() || "";
+        recordContact(email, name, date);
+      } else if (trimmed.includes("@")) {
+        recordContact(trimmed, "", date);
+      }
+    }
+  }
+
   const oldestQuery = db
     .select({ date: sql<number | null>`MIN(${messages.internalDate})` })
     .from(messages)
@@ -326,6 +378,9 @@ export function openMailStore(opts: OpenOptions) {
             .onConflictDoUpdate({ target: messages.id, set: updateSet })
             .run();
           writeFts(p.messageRef.get({ id: m.id })!.rowid, m);
+          if (m.fromEmail) recordContact(m.fromEmail, m.fromName, m.date);
+          if (m.to) recordAddressHeader(m.to, m.date);
+          if (m.cc) recordAddressHeader(m.cc, m.date);
           touched.add(m.threadId);
         }
         return recomputeAll(touched, me);
@@ -527,7 +582,39 @@ export function openMailStore(opts: OpenOptions) {
         db.delete(kv)
           .where(sql`${kv.key} NOT LIKE 'oauth_client%' AND ${kv.key} NOT LIKE 'secret_key%'`)
           .run();
+        db.delete(contacts).run();
       });
+    },
+
+    // ---- contacts -------------------------------------------------------
+    recordContact(email: string, name = "", date = Date.now()) {
+      recordContact(email, name, date);
+    },
+    searchContacts(query: string, limit = 20): Contact[] {
+      const q = query.trim().toLowerCase();
+      if (!q) {
+        return sqlite
+          .query<Contact, [number]>(`SELECT name, email FROM contacts ORDER BY count DESC, last_seen DESC LIMIT ?`)
+          .all(limit);
+      }
+      const term = `%${q}%`;
+      const prefix = `${q}%`;
+      return sqlite
+        .query<Contact, [string, string, string, string, number]>(
+          `SELECT name, email
+           FROM contacts
+           WHERE email LIKE ? OR name LIKE ?
+           ORDER BY
+             CASE
+               WHEN email LIKE ? THEN 1
+               WHEN name LIKE ? THEN 2
+               ELSE 3
+             END,
+             count DESC,
+             last_seen DESC
+           LIMIT ?`,
+        )
+        .all(term, term, prefix, prefix, limit);
     },
 
     close() {

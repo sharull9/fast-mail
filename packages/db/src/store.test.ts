@@ -152,4 +152,54 @@ describe("mail store", () => {
       s.close();
     }
   });
+
+  test("indexes and searches contacts from messages and manual recording", () => {
+    const s = openMailStore({ path: ":memory:" });
+    try {
+      s.upsertMessages(
+        [
+          msg({
+            id: "m1",
+            threadId: "t1",
+            date: 100,
+            fromName: "Sarah Connor",
+            fromEmail: "sarah@resistance.org",
+            to: '"John Connor" <john@resistance.org>, Kyle Reese <kyle@future.net>',
+            cc: "Miles Dyson <miles@cyberdyne.com>",
+          }),
+        ],
+        null,
+      );
+
+      const sarah = s.searchContacts("sarah", 10);
+      expect(sarah).toHaveLength(1);
+      expect(sarah[0]!.email).toBe("sarah@resistance.org");
+      expect(sarah[0]!.name).toBe("Sarah Connor");
+
+      const john = s.searchContacts("john@", 10);
+      expect(john).toHaveLength(1);
+      expect(john[0]!.email).toBe("john@resistance.org");
+      expect(john[0]!.name).toBe("John Connor");
+
+      const kyle = s.searchContacts("kyle", 10);
+      expect(kyle).toHaveLength(1);
+      expect(kyle[0]!.name).toBe("Kyle Reese");
+
+      const cyberdyne = s.searchContacts("cyberdyne", 10);
+      expect(cyberdyne).toHaveLength(1);
+      expect(cyberdyne[0]!.name).toBe("Miles Dyson");
+
+      // Test manual recording
+      s.recordContact("t800@skynet.com", "Model 101");
+      const arnold = s.searchContacts("101", 10);
+      expect(arnold).toHaveLength(1);
+      expect(arnold[0]!.email).toBe("t800@skynet.com");
+      expect(arnold[0]!.name).toBe("Model 101");
+
+      // Verify empty or unmatched query
+      expect(s.searchContacts("unknown", 10)).toEqual([]);
+    } finally {
+      s.close();
+    }
+  });
 });

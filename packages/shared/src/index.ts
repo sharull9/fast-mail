@@ -273,3 +273,9 @@ export const sendMessageResponseSchema = z.object({
   labelIds: z.array(z.string()).optional(),
 });
 export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
+
+export const contactSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+});
+export type Contact = z.infer<typeof contactSchema>;

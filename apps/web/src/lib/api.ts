@@ -1,6 +1,7 @@
 import type {
   AuthStatus,
   ConnectionStatus,
+  Contact,
   Label,
   ListThreadsResponse,
   ThreadDateRange,
@@ -166,6 +167,12 @@ export const api = {
     call<{ ok: true }>("/prefetch", { json: hint }).catch(() => undefined),
   sendMessage: (data: SendMessageRequest, accountId = activeAccountId) =>
     call<SendMessageResponse>("/messages/send", { json: data, headers: accountHeaders(accountId) }),
+  contacts: (q = "", limit = 20, signal?: AbortSignal, accountId = activeAccountId) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    params.set("limit", String(limit));
+    return call<Contact[]>(`/contacts?${params.toString()}`, { signal, headers: accountHeaders(accountId) });
+  },
   attachmentTicket: (params: { messageId: string; attachmentId: string; filename?: string; mimeType?: string }) =>
     call<{ ticket: string; url: string }>("/attachment-ticket", { json: params }),
 };
