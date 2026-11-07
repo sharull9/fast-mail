@@ -23,6 +23,15 @@ export interface PairingGrant {
   url: string;
 }
 
+/** Public metadata for a paired browser session; never includes the session token. */
+export interface PairedBrowser {
+  id: string;
+  createdAt: number;
+  lastSeenAt: number;
+  origin: string | null;
+  userAgent: string | null;
+}
+
 export const INBOX_TABS = [
   { id: "INBOX", name: "All" },
   { id: "INBOX_PRIMARY", name: "Primary" },

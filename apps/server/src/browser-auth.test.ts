@@ -5,7 +5,13 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { AUTH_HEADER, type ConnectionStatus, type PairingGrant, type ServerDescriptor } from "@mailfast/shared";
+import {
+  AUTH_HEADER,
+  type ConnectionStatus,
+  type PairedBrowser,
+  type PairingGrant,
+  type ServerDescriptor,
+} from "@mailfast/shared";
 
 const TOKEN = "test-token-0123456789abcdef";
 const UI_ORIGIN = "http://localhost:5199";
@@ -53,15 +59,16 @@ function redeem(code: string, headers: Record<string, string> = {}) {
 }
 
 /** Redeems a fresh grant and returns the browser's `name=value` cookie pair. */
-async function pairBrowser(origin: string = UI_ORIGIN): Promise<string> {
+async function pairBrowser(origin: string = UI_ORIGIN, headers: Record<string, string> = {}): Promise<string> {
   const { code } = await grant();
-  const res = await redeem(code, { origin });
+  const res = await redeem(code, { origin, ...headers });
   expect(res.status).toBe(200);
   const setCookie = res.headers.getSetCookie().find((c) => c.startsWith("mailfast_session_"));
   expect(setCookie).toBeDefined();
   expect(setCookie).toContain("HttpOnly");
   expect(setCookie).toContain("SameSite=Strict");
   expect(setCookie).toContain("Path=/api");
+  expect(setCookie).toContain("Max-Age=34560000");
   return setCookie!.split(";")[0]!;
 }
 
@@ -221,6 +228,51 @@ test("paired browser gets a unique cookie that authenticates requests", async ()
     body: "{}",
   });
   expect(write.status).toBe(200);
+});
+
+test("Electron token can list and revoke paired browser sessions", async () => {
+  const revokeCookie = await pairBrowser(UI_ORIGIN, { "user-agent": "Revocation Test" });
+  const keepCookie = await pairBrowser(CUSTOM_UI_ORIGIN, { "user-agent": "Keep Test" });
+
+  expect((await fetch(`${base}/api/browser-sessions`)).status).toBe(401);
+  expect(
+    (
+      await fetch(`${base}/api/browser-sessions`, {
+        headers: { cookie: revokeCookie, origin: UI_ORIGIN },
+      })
+    ).status,
+  ).toBe(401);
+
+  const list = await fetch(`${base}/api/browser-sessions`, { headers: { [AUTH_HEADER]: TOKEN } });
+  expect(list.status).toBe(200);
+  const sessions = (await list.json()) as PairedBrowser[];
+  expect(sessions.some((session) => session.userAgent === "Revocation Test")).toBe(true);
+  expect(sessions.some((session) => session.userAgent === "Keep Test")).toBe(true);
+  expect(sessions.every((session) => !("tokenHash" in session))).toBe(true);
+
+  const target = sessions.find((session) => session.userAgent === "Revocation Test")!;
+  const del = await fetch(`${base}/api/browser-sessions/${target.id}`, {
+    method: "DELETE",
+    headers: { [AUTH_HEADER]: TOKEN },
+  });
+  expect(del.status).toBe(200);
+  expect(
+    (
+      await fetch(`${base}/api/browser-sessions/${target.id}`, {
+        method: "DELETE",
+        headers: { [AUTH_HEADER]: TOKEN },
+      })
+    ).status,
+  ).toBe(404);
+
+  expect(
+    (await fetch(`${base}/api/auth/status`, { headers: { cookie: revokeCookie, "sec-fetch-site": "same-origin" } }))
+      .status,
+  ).toBe(401);
+  expect(
+    (await fetch(`${base}/api/auth/status`, { headers: { cookie: keepCookie, "sec-fetch-site": "same-origin" } }))
+      .status,
+  ).toBe(200);
 });
 
 test("browser cookie rejects cross-origin and ambiguous requests", async () => {

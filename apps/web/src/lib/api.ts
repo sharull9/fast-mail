@@ -6,6 +6,7 @@ import type {
   ThreadDateRange,
   MailAccount,
   PairingGrant,
+  PairedBrowser,
   SyncStatus,
   ThreadAction,
   ThreadDetail,
@@ -119,6 +120,9 @@ export const api = {
     if (typeof window !== "undefined") window.dispatchEvent(new Event("mailfast:session-invalid"));
   },
   createPairingGrant: () => call<PairingGrant>("/pairing-grants", { json: {} }),
+  browserSessions: () => call<PairedBrowser[]>("/browser-sessions"),
+  revokeBrowserSession: (id: string) =>
+    call<{ ok: true }>(`/browser-sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   authStatus: async (signal?: AbortSignal) => normalizeAuthStatus(await call<AuthStatus>("/auth/status", { signal })),
   setActiveAccount: async (id: string) =>
     normalizeAuthStatus(await call<AuthStatus>("/accounts/active", { json: { id } })),
@@ -159,6 +163,11 @@ export const api = {
   prefetch: (hint: { threadIds?: string[]; labelIds?: string[] }) =>
     call<{ ok: true }>("/prefetch", { json: hint }).catch(() => undefined),
 };
+
+/** True when running inside Electron's preload bridge, not a plain browser tab. */
+export function isDesktopApp() {
+  return typeof window !== "undefined" && Boolean((window as { mailfast?: unknown }).mailfast);
+}
 
 /** Opens a URL in the system browser (Electron) or a new tab (plain browser). */
 export function openExternal(url: string) {

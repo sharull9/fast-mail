@@ -79,7 +79,7 @@ bun run dev:ui                               # Vite only, when the sidecar is al
 
 ### Browser alongside the desktop app
 
-`bun run dev` starts Vite on `http://localhost:5199` and Electron, which starts the sidecar on `47821`. Opening `http://localhost:5199` in a normal browser uses the same UI and sidecar. The browser is not trusted automatically: the app asks the sidecar for a one-use pairing grant and opens `/#pair=<code>` in the system browser (or shows a code-entry form), which exchanges the code for an `HttpOnly`, `SameSite=Strict`, `Path=/api` session cookie — no token is exposed to page JavaScript.
+`bun run dev` starts Vite on `http://localhost:5199` and Electron, which starts the sidecar on `47821`. Opening `http://localhost:5199` in a normal browser uses the same UI and sidecar. The browser is not trusted automatically: the app asks the sidecar for a one-use pairing grant and opens `/#pair=<code>` in the system browser (or shows a code-entry form), which exchanges the code for a persistent `HttpOnly`, `SameSite=Strict`, `Path=/api` session cookie — no token is exposed to page JavaScript.
 
 For browser-only development, start the serial launcher from the repository root:
 
@@ -120,7 +120,7 @@ To run a second dev copy next to your main one: `MAILFAST_PORT=47900 MAILFAST_UI
 - The sidecar binds to `127.0.0.1` only and is local-only: no account data or credentials ever leave the machine except the Gmail API calls it makes itself.
 - Every `/api` request needs either the per-launch token or a paired browser session cookie.
   - Electron injects the token at the network layer, so renderer code never holds it.
-  - Browsers pair explicitly: an already-authenticated client calls `POST /api/pairing-grants` for a five-minute, one-use, high-entropy code (only its hash is kept in memory, so a restart revokes everything). `POST /api/session` redeems the code — guarded by the `x-mailfast-ui` marker, exact trusted `Origin`/`Host` checks, a body-size bound and a redemption rate limit — and sets an `HttpOnly`, `SameSite=Strict`, `Path=/api` cookie named per server instance. `DELETE /api/session` revokes that browser only.
+  - Browsers pair explicitly: an already-authenticated client calls `POST /api/pairing-grants` for a five-minute, one-use, high-entropy code (only its hash is kept in memory, so a restart revokes outstanding grants). `POST /api/session` redeems the code — guarded by the `x-mailfast-ui` marker, exact trusted `Origin`/`Host` checks, a body-size bound and a redemption rate limit — and sets a long-lived `HttpOnly`, `SameSite=Strict`, `Path=/api` cookie under a stable per-profile name. Session token hashes and public metadata are persisted in the server profile, so paired browsers survive restarts until revoked; `DELETE /api/session` revokes the calling browser, while the Electron token can list and revoke sessions through `/api/browser-sessions`.
   - `GET /.well-known/mailfast` exposes only the public `ServerDescriptor` (product, protocol version, instance id, mode, origin); `GET /api/connection` is unauthenticated and reports whether the current request is paired.
   - Each running server drops a credential-free record (`pid`, `origin`, `instanceId`, `mode`) into `~/.mailfast/run/<instanceId>.json` and removes it on exit, which is how `dev:web` finds and reuses it.
   - `/auth/*` is reachable from the system browser. It is protected by a one-time ticket, Better Auth's OAuth state cookie, and PKCE.

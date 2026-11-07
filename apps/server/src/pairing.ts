@@ -1,4 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { PairedBrowser } from "@mailfast/shared";
 
 /**
  * Browser pairing for the local sidecar.
@@ -6,12 +7,13 @@ import { createHash, randomBytes } from "node:crypto";
  * An already-authenticated client (Electron header or an existing browser
  * session) asks for a PairingGrant: a short-lived, high-entropy, one-use code.
  * A browser redeems it at POST /api/session for its own HttpOnly cookie.
- * Only hashes are stored, so a memory dump never contains a usable code, and
- * everything is in memory: a server restart revokes all outstanding grants
- * and sessions.
+ * Only hashes are stored, so a memory dump never contains a usable code.
+ * Session records are persisted by the server so paired browsers survive
+ * restarts until they are revoked.
  */
 
 export const PAIRING_GRANT_TTL_MS = 5 * 60_000;
+const SESSION_PERSIST_INTERVAL_MS = 60_000;
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -47,22 +49,103 @@ export class PairingGrants {
   }
 }
 
+export interface BrowserSessionMetadata {
+  origin?: string | null;
+  userAgent?: string | null;
+}
+
+/** Persisted record. `tokenHash` is never exposed through the API. */
+export interface BrowserSessionRecord extends BrowserSessionMetadata {
+  id: string;
+  tokenHash: string;
+  createdAt: number;
+  lastSeenAt: number;
+  origin: string | null;
+  userAgent: string | null;
+}
+
 /** One cookie session per paired browser; tokens are stored hashed. */
 export class SessionStore {
-  private tokens = new Set<string>();
+  /** sha256(token) -> session record. */
+  private sessions = new Map<string, BrowserSessionRecord>();
+  private lastPersistAt = 0;
 
-  issue(): string {
+  constructor(
+    records: BrowserSessionRecord[] = [],
+    private readonly now: () => number = () => Date.now(),
+    private readonly persist: (records: BrowserSessionRecord[]) => void = () => {},
+  ) {
+    for (const record of records) this.sessions.set(record.tokenHash, { ...record });
+  }
+
+  issue(metadata: BrowserSessionMetadata = {}): { token: string; id: string } {
     const token = randomBytes(32).toString("base64url");
-    this.tokens.add(hash(token));
-    return token;
+    const at = this.now();
+    const record: BrowserSessionRecord = {
+      id: randomUUID(),
+      tokenHash: hash(token),
+      createdAt: at,
+      lastSeenAt: at,
+      origin: metadata.origin ?? null,
+      userAgent: metadata.userAgent ?? null,
+    };
+    this.sessions.set(record.tokenHash, record);
+    this.persistNow();
+    return { token, id: record.id };
   }
 
   has(token: string): boolean {
-    return this.tokens.has(hash(token));
+    const record = this.sessions.get(hash(token));
+    if (!record) return false;
+    record.lastSeenAt = this.now();
+    this.persistSoon();
+    return true;
   }
 
-  /** Revokes a single browser session; other sessions are unaffected. */
-  revoke(token: string): void {
-    this.tokens.delete(hash(token));
+  list(): PairedBrowser[] {
+    return [...this.sessions.values()]
+      .map((record) => ({
+        id: record.id,
+        createdAt: record.createdAt,
+        lastSeenAt: record.lastSeenAt,
+        origin: record.origin,
+        userAgent: record.userAgent,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+  }
+
+  /** Revokes a session by its public id; the token itself is never needed. */
+  revoke(id: string): boolean {
+    for (const [tokenHash, record] of this.sessions) {
+      if (record.id !== id) continue;
+      this.sessions.delete(tokenHash);
+      this.persistNow();
+      return true;
+    }
+    return false;
+  }
+
+  /** Revokes the session matching a raw cookie token (browser self-disconnect). */
+  revokeToken(token: string): boolean {
+    const tokenHash = hash(token);
+    if (!this.sessions.delete(tokenHash)) return false;
+    this.persistNow();
+    return true;
+  }
+
+  snapshot(): BrowserSessionRecord[] {
+    return [...this.sessions.values()]
+      .map((record) => ({ ...record }))
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  }
+
+  private persistNow() {
+    this.lastPersistAt = this.now();
+    this.persist(this.snapshot());
+  }
+
+  private persistSoon() {
+    const now = this.now();
+    if (now - this.lastPersistAt >= SESSION_PERSIST_INTERVAL_MS) this.persistNow();
   }
 }

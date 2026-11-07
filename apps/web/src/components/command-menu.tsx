@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
 import { INBOX_TABS, type ThreadAction } from "@mailfast/shared";
 import { authQuery, labelsCollection, queryClient, searchQuery } from "@/lib/data";
-import { api, openExternal } from "@/lib/api";
+import { api, isDesktopApp, openExternal } from "@/lib/api";
 import { cleanSnippet, listDate, labelName, SCOPES, SIDEBAR_ORDER, sendersLabel } from "@/lib/format";
 import { act } from "@/components/thread-list";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +74,7 @@ export function CommandMenu({
     ("t" in location.search && typeof location.search.t === "string" ? location.search.t : undefined);
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
   const account = useQuery(authQuery).data?.account ?? "";
+  const desktop = isDesktopApp();
   const [value, setValue] = useState("");
   const [debounced, setDebounced] = useState("");
   const [selectedItem, setSelectedItem] = useState("");
@@ -155,16 +156,29 @@ export function CommandMenu({
       run: onPairBrowser,
       disabled: false,
     },
-    {
-      id: "global:disconnect-browser",
-      name: "Disconnect browser",
-      token: "disconnect",
-      icon: "command",
-      disabled: false,
-      run: async () => {
-        await api.disconnectBrowser();
-      },
-    },
+    ...(desktop
+      ? [
+          {
+            id: "global:manage-browsers",
+            name: "Manage paired browsers",
+            token: "browsers",
+            icon: "external",
+            disabled: false,
+            run: onPairBrowser,
+          },
+        ]
+      : [
+          {
+            id: "global:disconnect-browser",
+            name: "Disconnect browser",
+            token: "disconnect",
+            icon: "command",
+            disabled: false,
+            run: async () => {
+              await api.disconnectBrowser();
+            },
+          },
+        ]),
     {
       id: "global:gmail",
       name: "Open in Gmail",

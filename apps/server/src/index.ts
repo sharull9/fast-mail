@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { openAppStore } from "@mailfast/db";
 import { env } from "@mailfast/env/server";
 import {
@@ -16,7 +16,7 @@ import {
 import { Auth, AuthError } from "@/auth.ts";
 import { Events } from "@/events.ts";
 import { Accounts } from "@/accounts.ts";
-import { PairingGrants, SessionStore } from "@/pairing.ts";
+import { PairingGrants, SessionStore, type BrowserSessionRecord } from "@/pairing.ts";
 import { acquireServerOwnership } from "@/server-ownership.ts";
 import { listThreadsResponse } from "@/threads.ts";
 
@@ -38,10 +38,8 @@ const apiToken = env.MAILFAST_TOKEN ?? crypto.randomUUID();
 const instanceId = crypto.randomUUID();
 const mode = env.MAILFAST_SERVER_MODE;
 const staticDir = env.MAILFAST_STATIC_DIR ? resolve(env.MAILFAST_STATIC_DIR) : null;
-const SESSION_COOKIE = `mailfast_session_${instanceId.replaceAll("-", "")}`;
 const UI_BOOTSTRAP_HEADER = "x-mailfast-ui";
 const pairingGrants = new PairingGrants();
-const browserSessions = new SessionStore();
 const redeemAttempts: number[] = [];
 let trustedOrigins = new Set<string>();
 let trustedHosts = new Set<string>();
@@ -50,6 +48,48 @@ let pairBaseOrigin = "";
 
 const appStore = openAppStore({ path: join(dataDir, "mail.sqlite"), migrationsFolder: env.MAILFAST_MIGRATIONS_DIR });
 const events = new Events();
+
+const BROWSER_SESSION_STORE_KEY = "browser_sessions";
+const BROWSER_SESSION_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
+
+function isBrowserSessionRecord(value: unknown): value is BrowserSessionRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.tokenHash === "string" &&
+    record.tokenHash.length === 64 &&
+    typeof record.createdAt === "number" &&
+    typeof record.lastSeenAt === "number" &&
+    (record.origin === null || typeof record.origin === "string") &&
+    (record.userAgent === null || typeof record.userAgent === "string")
+  );
+}
+
+function loadBrowserSessionStore(): { namespace: string; sessions: BrowserSessionRecord[] } {
+  const fresh = () => ({ namespace: randomBytes(8).toString("hex"), sessions: [] });
+  const raw = appStore.kvGet(BROWSER_SESSION_STORE_KEY);
+  if (!raw) return fresh();
+  try {
+    const parsed = JSON.parse(raw) as { namespace?: unknown; sessions?: unknown };
+    if (typeof parsed.namespace !== "string" || parsed.namespace.length === 0) return fresh();
+    const sessions = Array.isArray(parsed.sessions) ? parsed.sessions.filter(isBrowserSessionRecord) : [];
+    return { namespace: parsed.namespace, sessions };
+  } catch {
+    return fresh();
+  }
+}
+
+const browserSessionStore = loadBrowserSessionStore();
+const SESSION_COOKIE = `mailfast_session_${browserSessionStore.namespace}`;
+const browserSessions = new SessionStore(
+  browserSessionStore.sessions,
+  () => Date.now(),
+  (sessions) => {
+    appStore.kvSet(BROWSER_SESSION_STORE_KEY, JSON.stringify({ namespace: browserSessionStore.namespace, sessions }));
+  },
+);
+
 // Better Auth needs the final origin (for the OAuth redirect URI), so these are created once the port is bound.
 let auth!: Auth;
 let accounts!: Accounts;
@@ -93,11 +133,15 @@ function browserRequestAllowed(req: Request): boolean {
   return req.headers.get("sec-fetch-site") === "same-origin";
 }
 
-function authorized(req: Request): boolean {
+function electronAuthorized(req: Request): boolean {
   const header = req.headers.get(AUTH_HEADER);
-  if (header !== null && tokenEquals(header, apiToken)) return true;
+  return header !== null && tokenEquals(header, apiToken);
+}
+
+function authorized(req: Request): boolean {
+  if (electronAuthorized(req)) return true;
   const cookie = sessionCookie(req);
-  return cookie !== null && browserSessions.has(cookie) && browserRequestAllowed(req);
+  return cookie !== null && browserRequestAllowed(req) && browserSessions.has(cookie);
 }
 
 /** Throttles grant-code guessing: 20 redemption attempts per minute, per server. */
@@ -125,19 +169,22 @@ async function redeemPairingCode(req: Request): Promise<Response> {
   const b = await body<{ code?: unknown }>(req);
   if (typeof b.code !== "string") return json({ error: "pairing code required" }, 400);
   if (!pairingGrants.consume(b.code)) return json({ error: "invalid or expired pairing code" }, 400);
-  const token = browserSessions.issue();
+  const { token } = browserSessions.issue({
+    origin: req.headers.get("origin"),
+    userAgent: req.headers.get("user-agent")?.slice(0, 200) ?? null,
+  });
   return json({ ok: true }, 200, {
-    "set-cookie": `${SESSION_COOKIE}=${token}; Path=/api; HttpOnly; SameSite=Strict`,
+    "set-cookie": `${SESSION_COOKIE}=${token}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${BROWSER_SESSION_COOKIE_MAX_AGE}`,
   });
 }
 
 /** DELETE /api/session: revoke this browser's session cookie only. */
 function revokeBrowserSession(req: Request): Response {
   const token = sessionCookie(req);
-  if (token === null || !browserSessions.has(token) || !browserRequestAllowed(req)) {
+  if (token === null || !browserRequestAllowed(req) || !browserSessions.has(token)) {
     return json({ error: "unauthorized" }, 401);
   }
-  browserSessions.revoke(token);
+  browserSessions.revokeToken(token);
   return json({ ok: true }, 200, {
     "set-cookie": `${SESSION_COOKIE}=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0`,
   });
@@ -200,6 +247,21 @@ try {
         if (req.method === "POST") return redeemPairingCode(req);
         if (req.method === "DELETE") return revokeBrowserSession(req);
         return json({ error: "method not allowed" }, 405);
+      }
+
+      // Desktop-only management of paired browser sessions.
+      if (path === "/api/browser-sessions" || path.startsWith("/api/browser-sessions/")) {
+        if (!electronAuthorized(req)) return json({ error: "unauthorized" }, 401);
+        if (path === "/api/browser-sessions") {
+          if (req.method === "GET") return json(browserSessions.list());
+          return json({ error: "method not allowed" }, 405);
+        }
+        const sessionMatch = path.match(/^\/api\/browser-sessions\/([\w-]+)$/);
+        if (sessionMatch && req.method === "DELETE") {
+          if (!browserSessions.revoke(sessionMatch[1]!)) return json({ error: "not found" }, 404);
+          return json({ ok: true });
+        }
+        return json({ error: "not found" }, 404);
       }
 
       if (!path.startsWith("/api/")) return serveStatic(path);
