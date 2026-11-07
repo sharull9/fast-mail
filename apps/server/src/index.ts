@@ -346,8 +346,9 @@ try {
         if (threadMatch && req.method === "GET") {
           const id = threadMatch[1]!;
           const local = store.getThread(id);
-          if (!local) {
-            await sync.ensureThread(id); // unknown thread: wait for Gmail once
+          const hasBodies = store.hasThreadBodies(id);
+          if (!local || !hasBodies) {
+            await sync.ensureThread(id, true); // unknown thread or missing bodies: wait for Gmail once
             const after = store.getThread(id);
             if (!after) return json({ error: "not found" }, 404);
             return json({

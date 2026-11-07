@@ -347,13 +347,13 @@ export class SyncEngine {
   }
 
   /**
-   * Make sure every message of a thread is local. Skipped when backfill has
-   * finished (everything is local) or the thread was already fetched whole.
+   * Make sure every message of a thread is local and has bodies.
    */
   ensureThread(threadId: string, force = false): Promise<void> {
     if (!this.auth.status().signedIn) return Promise.resolve();
     const local = this.store.getThread(threadId);
-    if (!force && (local?.complete || (local && this.store.kvGet("backfill_done") === "1"))) return Promise.resolve();
+    const hasBodies = this.store.hasThreadBodies(threadId);
+    if (!force && local?.complete && hasBodies) return Promise.resolve();
     return this.once(`thread:${threadId}`, async () => {
       const msgs = await this.gmail.thread(threadId, Priority.Interactive);
       this.store_(msgs);

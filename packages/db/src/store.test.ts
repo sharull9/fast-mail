@@ -51,6 +51,38 @@ describe("mail store", () => {
     s.close();
   });
 
+  test("stores and retrieves message bodies and attachments", () => {
+    const s = openMailStore({ path: ":memory:" });
+    s.upsertMessages(
+      [
+        msg({
+          id: "m_body",
+          threadId: "t_body",
+          date: 100,
+          bodyHtml: "<p>Hello <b>World</b></p>",
+          bodyText: "Hello World",
+          attachments: [{ filename: "doc.pdf", mimeType: "application/pdf", size: 1024 }],
+        }),
+      ],
+      null,
+    );
+    expect(s.hasThreadBodies("t_body")).toBe(true);
+    const msgs = s.threadMessages("t_body");
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.bodyHtml).toBe("<p>Hello <b>World</b></p>");
+    expect(msgs[0]!.bodyText).toBe("Hello World");
+    expect(msgs[0]!.attachments).toEqual([{ filename: "doc.pdf", mimeType: "application/pdf", size: 1024 }]);
+
+    // Update with metadata-only preserves existing body
+    s.upsertMessages([msg({ id: "m_body", threadId: "t_body", date: 100, snippet: "updated" })], null);
+    const updated = s.threadMessages("t_body");
+    expect(updated[0]!.snippet).toBe("updated");
+    expect(updated[0]!.bodyHtml).toBe("<p>Hello <b>World</b></p>");
+    expect(updated[0]!.bodyText).toBe("Hello World");
+    expect(updated[0]!.attachments).toEqual([{ filename: "doc.pdf", mimeType: "application/pdf", size: 1024 }]);
+    s.close();
+  });
+
   test("fts query escaping", () => {
     expect(toFtsQuery(' foo "bar ')).toBe('"foo"* "bar"*');
     expect(toFtsQuery("   ")).toBeNull();

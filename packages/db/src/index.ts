@@ -3,7 +3,15 @@ import { fileURLToPath } from "node:url";
 import { and, asc, count, desc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import type { Label, MessageMeta, Participant, ThreadAction, ThreadDateRange, ThreadRow } from "@mailfast/shared";
+import type {
+  AttachmentMeta,
+  Label,
+  MessageMeta,
+  Participant,
+  ThreadAction,
+  ThreadDateRange,
+  ThreadRow,
+} from "@mailfast/shared";
 import { inboxCategoryLabel, isInboxCategory, NON_PRIMARY_CATEGORY_LABELS } from "@mailfast/shared";
 import * as schema from "./schema.ts";
 import { account, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
@@ -24,6 +32,9 @@ export interface MessageInput {
   subject: string;
   snippet: string;
   labelIds: string[];
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+  attachments?: AttachmentMeta[];
 }
 
 export interface OpenOptions {
@@ -77,6 +88,9 @@ function toMessageMeta(r: MessageSelect): MessageMeta {
     labelIds: r.labelIds,
     unread: r.labelIds.includes("UNREAD"),
     starred: r.labelIds.includes("STARRED"),
+    bodyHtml: r.bodyHtml,
+    bodyText: r.bodyText,
+    attachments: r.attachments ?? undefined,
   };
 }
 
@@ -288,10 +302,28 @@ export function openMailStore(opts: OpenOptions) {
             subject: m.subject,
             snippet: m.snippet,
             labelIds: m.labelIds,
+            ...(m.bodyHtml !== undefined ? { bodyHtml: m.bodyHtml } : {}),
+            ...(m.bodyText !== undefined ? { bodyText: m.bodyText } : {}),
+            ...(m.attachments !== undefined ? { attachments: m.attachments } : {}),
           };
+          const updateSet: Record<string, unknown> = {
+            threadId: m.threadId,
+            internalDate: m.date,
+            fromName: m.fromName,
+            fromEmail: m.fromEmail,
+            to: m.to,
+            cc: m.cc,
+            subject: m.subject,
+            snippet: m.snippet,
+            labelIds: m.labelIds,
+          };
+          if (m.bodyHtml !== undefined) updateSet.bodyHtml = m.bodyHtml;
+          if (m.bodyText !== undefined) updateSet.bodyText = m.bodyText;
+          if (m.attachments !== undefined) updateSet.attachments = m.attachments;
+
           db.insert(messages)
             .values({ id: m.id, ...row })
-            .onConflictDoUpdate({ target: messages.id, set: row })
+            .onConflictDoUpdate({ target: messages.id, set: updateSet })
             .run();
           writeFts(p.messageRef.get({ id: m.id })!.rowid, m);
           touched.add(m.threadId);
@@ -360,6 +392,9 @@ export function openMailStore(opts: OpenOptions) {
     },
     threadMessages(threadId: string): MessageMeta[] {
       return p.messagesOfThread.all({ threadId }).map(toMessageMeta);
+    },
+    hasThreadBodies(threadId: string): boolean {
+      return p.messagesOfThread.all({ threadId }).some((m) => m.bodyHtml !== null || m.bodyText !== null);
     },
     /** Keyset page of a label, newest first. `before` is an exclusive lastDate cursor. */
     listThreads(labelId: string, before: number, limit: number, after = -Number.MAX_SAFE_INTEGER): ThreadRow[] {

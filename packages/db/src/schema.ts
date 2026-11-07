@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import type { Participant, ThreadAction } from "@mailfast/shared";
+import type { AttachmentMeta, Participant, ThreadAction } from "@mailfast/shared";
 
 /**
  * Local metadata cache. Every UI read is served from here, so list views and
@@ -30,6 +30,9 @@ export const messages = sqliteTable(
     subject: text("subject").notNull(),
     snippet: text("snippet").notNull(),
     labelIds: text("label_ids", { mode: "json" }).$type<string[]>().notNull(),
+    bodyHtml: text("body_html"),
+    bodyText: text("body_text"),
+    attachments: text("attachments", { mode: "json" }).$type<AttachmentMeta[]>(),
   },
   (t) => [index("messages_thread").on(t.threadId, t.internalDate)],
 );

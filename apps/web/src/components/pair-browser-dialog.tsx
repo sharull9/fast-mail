@@ -214,7 +214,10 @@ export function PairBrowserDialog({ open, onOpenChange }: { open: boolean; onOpe
                           className="truncate text-sm font-medium"
                           title={session.userAgent ?? session.origin ?? "Paired browser"}
                         >
-                          {formatBrowserName(session.userAgent) ?? session.userAgent ?? session.origin ?? "Paired browser"}
+                          {formatBrowserName(session.userAgent) ??
+                            session.userAgent ??
+                            session.origin ??
+                            "Paired browser"}
                         </span>
                         {session.current && (
                           <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">

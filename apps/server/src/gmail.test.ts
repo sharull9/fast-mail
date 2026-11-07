@@ -32,6 +32,54 @@ test("parses addresses and snippets", () => {
     },
   });
   expect(m).toMatchObject({ fromName: "Al", fromEmail: "al@x.com", subject: "Yo", date: 1700000000000 });
+  expect(m.bodyHtml).toBeNull();
+  expect(m.bodyText).toBeNull();
+});
+
+test("extracts message bodies and attachments from full payload", () => {
+  const htmlEncoded = Buffer.from("<p>Hello <b>World</b></p>").toString("base64url");
+  const textEncoded = Buffer.from("Hello World").toString("base64url");
+  const m = toMessageInput({
+    id: "m_full",
+    threadId: "t_full",
+    internalDate: "1700000000000",
+    labelIds: ["INBOX"],
+    snippet: "Hello World",
+    payload: {
+      mimeType: "multipart/mixed",
+      headers: [
+        { name: "From", value: "Bob <bob@x.com>" },
+        { name: "To", value: "alice@x.com" },
+        { name: "Subject", value: "Test" },
+      ],
+      parts: [
+        {
+          mimeType: "multipart/alternative",
+          parts: [
+            {
+              mimeType: "text/plain",
+              body: { data: textEncoded, size: 11 },
+            },
+            {
+              mimeType: "text/html",
+              body: { data: htmlEncoded, size: 26 },
+            },
+          ],
+        },
+        {
+          mimeType: "application/pdf",
+          filename: "statement.pdf",
+          body: { attachmentId: "att_123", size: 4096 },
+        },
+      ],
+    },
+  });
+
+  expect(m.bodyHtml).toBe("<p>Hello <b>World</b></p>");
+  expect(m.bodyText).toBe("Hello World");
+  expect(m.attachments).toEqual([
+    { id: "att_123", filename: "statement.pdf", mimeType: "application/pdf", size: 4096 },
+  ]);
 });
 
 test("limiter serves interactive work before background", async () => {

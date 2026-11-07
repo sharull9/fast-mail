@@ -1,17 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
 import { authQuery, labelsCollection, threadQuery } from "@/lib/data";
 import { cleanSnippet, HIDDEN_LABELS, labelName, longDate, parseAddresses } from "@/lib/format";
 import { openExternal } from "@/lib/api";
 import { act } from "@/components/thread-list";
+import type { AttachmentMeta, MessageMeta } from "@mailfast/shared";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Icon } from "@/components/icon";
-import { ChevronDown, CircleAlert, MoreHorizontal, X } from "lucide-react";
+import {
+  ChevronDown,
+  CircleAlert,
+  File,
+  FileArchive,
+  FileCode,
+  FileText,
+  Image,
+  MoreHorizontal,
+  Paperclip,
+  X,
+} from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -24,19 +36,10 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Thread metadata view. Bodies are intentionally not rendered (out of scope);
- * each message shows sender, recipients, date and Gmail's snippet, with a
- * one-click jump to the full thread in Gmail.
+ * Thread conversation view. Displays full message details, sender, recipients,
+ * attachments, and complete HTML/text bodies with one-click actions.
  */
-export function ThreadView({
-  threadId,
-  paneId,
-  onClose,
-}: {
-  threadId: string;
-  paneId?: string;
-  onClose: () => void;
-}) {
+export function ThreadView({ threadId, paneId, onClose }: { threadId: string; paneId?: string; onClose: () => void }) {
   const { data, isPending, error } = useQuery(threadQuery(threadId));
   const account = useQuery(authQuery).data?.account ?? "";
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
@@ -98,6 +101,27 @@ export function ThreadView({
   const gmailUrl = `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${threadId}`;
   const inInbox = t.labelIds.includes("INBOX");
   const inTrash = t.labelIds.includes("TRASH");
+
+  const allAttachments = useMemo(() => {
+    const list: ThreadAttachment[] = [];
+    for (const m of data.messages) {
+      if (m.attachments && m.attachments.length > 0) {
+        for (const att of m.attachments) {
+          list.push({
+            ...att,
+            messageId: m.id,
+            fromName: m.from.name || m.from.email,
+            date: m.date,
+          });
+        }
+      }
+    }
+    return list;
+  }, [data.messages]);
+
+  const totalAttachmentBytes = useMemo(() => {
+    return allAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+  }, [allAttachments]);
 
   return (
     // The reading pane is its own size container: it is resizable, so its layout follows its width, not the window's.
@@ -189,38 +213,330 @@ export function ThreadView({
           {!data.complete && <Badge variant="secondary">loading older messages…</Badge>}
         </div>
 
-        <ol className="divide-y">
+        <ol className="divide-y divide-border/60">
           {data.messages.map((m) => (
-            <li key={m.id} className={cn("py-2", m.unread && "border-l-2 border-l-primary pl-4")}>
-              <section>
-                <MessageHeader message={m} account={account} />
-                <p className="mt-4 wrap-break-word text-[14px] leading-relaxed text-secondary-foreground">
-                  {cleanSnippet(m.snippet) || <span className="text-muted-foreground">(no preview)</span>}
-                </p>
-              </section>
-            </li>
+            <ThreadMessageItem key={m.id} message={m} account={account} defaultExpanded={true} />
           ))}
         </ol>
       </div>
-      <footer className="sticky bottom-0 mt-auto bg-background p-5 pt-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Bodies and replies open in Gmail</span>
-          <Button size="sm" onClick={() => openExternal(gmailUrl)}>
-            Open in Gmail <Icon name="external" />
-          </Button>
-        </div>
-      </footer>
+      <div className="sticky bottom-0 z-10 mt-auto bg-background/95 backdrop-blur-xs">
+        {allAttachments.length > 0 && (
+          <StickyAttachmentsBar attachments={allAttachments} totalBytes={totalAttachmentBytes} gmailUrl={gmailUrl} />
+        )}
+        <footer className="p-5 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                {data.messages.length} {data.messages.length === 1 ? "message" : "messages"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => openExternal(gmailUrl)}>
+                <Icon name="external" />
+                Reply in Gmail
+              </Button>
+              <Button size="sm" onClick={() => openExternal(gmailUrl)}>
+                Open in Gmail <Icon name="external" />
+              </Button>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
 
-type Message = { from: { name: string; email: string }; to: string; cc: string; date: number };
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+interface ThreadAttachment extends AttachmentMeta {
+  messageId: string;
+  fromName: string;
+  date: number;
+}
+
+function getAttachmentIcon(mimeType: string, filename: string) {
+  const mime = (mimeType || "").toLowerCase();
+  const ext = (filename || "").split(".").pop()?.toLowerCase() ?? "";
+
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
+    return <Image className="size-4 text-blue-500 shrink-0" />;
+  }
+  if (mime === "application/pdf" || ext === "pdf") {
+    return <FileText className="size-4 text-red-500 shrink-0" />;
+  }
+  if (
+    mime.includes("zip") ||
+    mime.includes("tar") ||
+    mime.includes("compressed") ||
+    ["zip", "tar", "gz", "7z", "rar"].includes(ext)
+  ) {
+    return <FileArchive className="size-4 text-amber-500 shrink-0" />;
+  }
+  if (
+    mime.includes("json") ||
+    mime.includes("javascript") ||
+    mime.includes("typescript") ||
+    ["js", "ts", "tsx", "jsx", "html", "css", "py", "sh"].includes(ext)
+  ) {
+    return <FileCode className="size-4 text-emerald-500 shrink-0" />;
+  }
+  return <File className="size-4 text-muted-foreground shrink-0" />;
+}
+
+function StickyAttachmentsBar({
+  attachments,
+  totalBytes,
+  gmailUrl,
+}: {
+  attachments: ThreadAttachment[];
+  totalBytes: number;
+  gmailUrl: string;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (!attachments.length) return null;
+
+  return (
+    <div className="border-t border-border/80 bg-card/95 px-5 py-3 backdrop-blur-xs transition-all">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Paperclip className="size-4 text-primary shrink-0" />
+          <span className="text-xs font-semibold text-foreground">Attachments from history ({attachments.length})</span>
+          <span className="text-[11px] text-muted-foreground tabular-nums">· {formatBytes(totalBytes)}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-expanded={!collapsed}
+        >
+          <span>{collapsed ? "Show" : "Hide"}</span>
+          <ChevronDown
+            aria-hidden="true"
+            className={cn("size-3.5 transition-transform duration-200", !collapsed && "rotate-180")}
+          />
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div className="mt-2.5 flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+          {attachments.map((att, idx) => (
+            <div
+              key={att.id ?? `${att.filename}-${idx}`}
+              onClick={() => openExternal(gmailUrl)}
+              className="group inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-background/90 px-3 py-2 text-xs transition-colors hover:border-primary/50 hover:bg-muted/50 shadow-2xs"
+              title={`${att.filename} (${formatBytes(att.size)}) - sent by ${att.fromName}. Click to open in Gmail.`}
+            >
+              {getAttachmentIcon(att.mimeType, att.filename)}
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate max-w-[200px] font-medium text-foreground group-hover:text-primary">
+                  {att.filename}
+                </span>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {formatBytes(att.size)} · from {att.fromName}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HtmlBody({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState<number>(120);
+
+  const srcDoc = useMemo(() => {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base target="_blank">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 14px 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background-color: #ffffff;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    img {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+    table {
+      max-width: 100% !important;
+    }
+    a {
+      color: #2563eb;
+    }
+    pre, code {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    blockquote {
+      margin: 8px 0;
+      padding-left: 12px;
+      border-left: 3px solid #cbd5e1;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  ${html}
+</body>
+</html>`;
+  }, [html]);
+
+  const updateHeight = () => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc) {
+        const h = Math.max(doc.body?.scrollHeight ?? 0, doc.documentElement?.scrollHeight ?? 0);
+        if (h > 0) {
+          setHeight(h + 8);
+        }
+      }
+    } catch {
+      // Ignore potential cross-origin restriction
+    }
+  };
+
+  useEffect(() => {
+    updateHeight();
+    const t1 = setTimeout(updateHeight, 150);
+    const t2 = setTimeout(updateHeight, 600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [srcDoc]);
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-white shadow-xs">
+      <iframe
+        ref={iframeRef}
+        srcDoc={srcDoc}
+        onLoad={updateHeight}
+        sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+        className="w-full border-0 block"
+        style={{ height: `${height}px`, minHeight: "80px" }}
+        title="Email message body"
+      />
+    </div>
+  );
+}
+
+function TextBody({ text }: { text: string }) {
+  return (
+    <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4 font-sans text-[14px] leading-relaxed text-foreground whitespace-pre-wrap select-text break-words">
+      {text}
+    </div>
+  );
+}
+
+function ThreadMessageItem({
+  message: m,
+  account,
+  defaultExpanded,
+}: {
+  message: MessageMeta;
+  account: string;
+  defaultExpanded: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [viewMode, setViewMode] = useState<"html" | "text">(m.bodyHtml ? "html" : "text");
+
+  return (
+    <li className={cn("py-3", m.unread && "border-l-2 border-l-primary pl-4")}>
+      <section>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <MessageHeader message={m} account={account} />
+          </div>
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            {expanded && m.bodyHtml && m.bodyText && (
+              <div className="inline-flex rounded-md border border-border/60 p-0.5 text-xs">
+                <button
+                  type="button"
+                  className={cn(
+                    "px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors",
+                    viewMode === "html" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setViewMode("html")}
+                >
+                  HTML
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors",
+                    viewMode === "text" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setViewMode("text")}
+                >
+                  Text
+                </button>
+              </div>
+            )}
+            <IconButton
+              label={expanded ? "Collapse message" : "Expand message"}
+              className="size-7 text-muted-foreground"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              <ChevronDown
+                aria-hidden="true"
+                className={cn("size-3.5 transition-transform duration-200", expanded && "rotate-180")}
+              />
+            </IconButton>
+          </div>
+        </div>
+
+        {expanded ? (
+          <div>
+            {viewMode === "html" && m.bodyHtml ? (
+              <HtmlBody html={m.bodyHtml} />
+            ) : m.bodyText ? (
+              <TextBody text={m.bodyText} />
+            ) : (
+              <p className="mt-4 wrap-break-word text-[14px] leading-relaxed text-secondary-foreground">
+                {cleanSnippet(m.snippet) || <span className="text-muted-foreground">(no preview)</span>}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p
+            className="mt-1.5 cursor-pointer truncate text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded(true)}
+          >
+            {cleanSnippet(m.snippet) || "(no preview)"}
+          </p>
+        )}
+      </section>
+    </li>
+  );
+}
 
 /**
  * Sender line (name, address, date) over a one-line recipient summary ("to me, Ann · cc Bob").
  * The summary toggles a details card with every full address.
  */
-function MessageHeader({ message: m, account }: { message: Message; account: string }) {
+function MessageHeader({ message: m, account }: { message: MessageMeta; account: string }) {
   const [open, setOpen] = useState(false);
   const to = parseAddresses(m.to);
   const cc = parseAddresses(m.cc);

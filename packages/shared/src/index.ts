@@ -1,5 +1,4 @@
 // Types shared by the Bun server (apps/server) and the web UI (apps/web).
-// Message bodies are deliberately out of scope: everything here is metadata.
 
 export const AUTH_HEADER = "x-mailfast-token";
 
@@ -97,6 +96,13 @@ export interface ThreadRow {
   labelIds: string[];
 }
 
+export interface AttachmentMeta {
+  id?: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface MessageMeta {
   id: string;
   threadId: string;
@@ -109,6 +115,9 @@ export interface MessageMeta {
   labelIds: string[];
   unread: boolean;
   starred: boolean;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+  attachments?: AttachmentMeta[];
 }
 
 export interface ThreadDetail {

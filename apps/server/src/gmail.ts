@@ -1,5 +1,5 @@
 import type { MessageInput } from "@mailfast/db";
-import type { Label } from "@mailfast/shared";
+import type { AttachmentMeta, Label } from "@mailfast/shared";
 import type { Auth } from "@/auth.ts";
 import { Limiter, Priority } from "@/limiter.ts";
 
@@ -33,13 +33,22 @@ export class GmailError extends Error {
   }
 }
 
-interface RawMessage {
+export interface RawPart {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: { name: string; value: string }[];
+  body?: { size?: number; data?: string; attachmentId?: string };
+  parts?: RawPart[];
+}
+
+export interface RawMessage {
   id: string;
   threadId: string;
   labelIds?: string[];
   snippet?: string;
   internalDate?: string;
-  payload?: { headers?: { name: string; value: string }[] };
+  payload?: RawPart;
 }
 
 export interface HistoryPage {
@@ -73,6 +82,76 @@ export function parseAddress(value: string): { name: string; email: string } {
   return { name: "", email };
 }
 
+function decodeBase64Url(data: string): string {
+  try {
+    return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+  } catch {
+    return "";
+  }
+}
+
+export function extractBodyAndAttachments(payload?: RawPart): {
+  bodyHtml: string | null;
+  bodyText: string | null;
+  attachments: AttachmentMeta[];
+} {
+  if (!payload) {
+    return { bodyHtml: null, bodyText: null, attachments: [] };
+  }
+
+  const isFullPayload = Boolean(payload.body?.data || (payload.parts && payload.parts.length > 0));
+  if (!isFullPayload) {
+    return { bodyHtml: null, bodyText: null, attachments: [] };
+  }
+
+  let bodyHtml: string | null = null;
+  let bodyText: string | null = null;
+  const attachments: AttachmentMeta[] = [];
+
+  function traverse(part: RawPart) {
+    const mimeType = (part.mimeType ?? "").toLowerCase();
+    const filename = (part.filename ?? "").trim();
+    const attachmentId = part.body?.attachmentId;
+    const isAttachment = Boolean(filename || attachmentId);
+
+    if (isAttachment) {
+      attachments.push({
+        id: attachmentId,
+        filename: filename || "attachment",
+        mimeType: mimeType || "application/octet-stream",
+        size: part.body?.size ?? 0,
+      });
+      return;
+    }
+
+    if (mimeType === "text/html" && part.body?.data) {
+      const decoded = decodeBase64Url(part.body.data);
+      if (decoded) {
+        bodyHtml = bodyHtml ? `${bodyHtml}<br/>${decoded}` : decoded;
+      }
+    } else if (mimeType === "text/plain" && part.body?.data) {
+      const decoded = decodeBase64Url(part.body.data);
+      if (decoded) {
+        bodyText = bodyText ? `${bodyText}\n${decoded}` : decoded;
+      }
+    }
+
+    if (part.parts && Array.isArray(part.parts)) {
+      for (const child of part.parts) {
+        traverse(child);
+      }
+    }
+  }
+
+  traverse(payload);
+
+  if (bodyHtml === null && bodyText === null) {
+    bodyText = "";
+  }
+
+  return { bodyHtml, bodyText, attachments };
+}
+
 export function toMessageInput(raw: RawMessage): MessageInput {
   const headers = new Map<string, string>();
   for (const h of raw.payload?.headers ?? []) {
@@ -80,6 +159,7 @@ export function toMessageInput(raw: RawMessage): MessageInput {
     if (!headers.has(key)) headers.set(key, h.value);
   }
   const from = parseAddress(headers.get("from") ?? "");
+  const extracted = extractBodyAndAttachments(raw.payload);
   return {
     id: raw.id,
     threadId: raw.threadId,
@@ -91,6 +171,9 @@ export function toMessageInput(raw: RawMessage): MessageInput {
     subject: headers.get("subject") ?? "",
     snippet: decodeEntities(raw.snippet ?? ""),
     labelIds: raw.labelIds ?? [],
+    bodyHtml: extracted.bodyHtml,
+    bodyText: extracted.bodyText,
+    attachments: extracted.attachments.length > 0 ? extracted.attachments : undefined,
   };
 }
 
@@ -214,9 +297,8 @@ export class Gmail {
   }
 
   async thread(threadId: string, priority: Priority): Promise<MessageInput[]> {
-    const fields = encodeURIComponent(`messages(${MESSAGE_FIELDS})`);
     const res = await this.request<{ messages?: RawMessage[] }>(`/threads/${encodeURIComponent(threadId)}`, {
-      query: "format=metadata&" + META_HEADERS.map((h) => `metadataHeaders=${h}`).join("&") + `&fields=${fields}`,
+      query: "format=full",
       units: UNITS.threadGet,
       priority,
     });
