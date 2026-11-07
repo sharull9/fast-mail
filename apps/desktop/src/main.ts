@@ -157,6 +157,23 @@ function createWindow(url: string) {
   win.once("ready-to-show", () => win?.show());
   win.on("closed", () => (win = null));
 
+  // Reload shortcut: Ctrl+R / Cmd+R (and F5) to refresh the desktop window.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.isAutoRepeat) return;
+    const isR =
+      (input.control || input.meta) && !input.alt && (input.key.toLowerCase() === "r" || input.code === "KeyR");
+    const isF5 = input.key === "F5" && !input.control && !input.meta && !input.alt;
+    if (isR || isF5) {
+      event.preventDefault();
+      if (!win || win.isDestroyed()) return;
+      if (input.shift) {
+        win.webContents.reloadIgnoringCache();
+      } else {
+        win.webContents.reload();
+      }
+    }
+  });
+
   // Links leaving the app open in the system browser.
   const appOrigin = new URL(url).origin;
   win.webContents.setWindowOpenHandler(({ url: target }) => {
