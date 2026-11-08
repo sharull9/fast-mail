@@ -390,8 +390,8 @@ export function ThreadList({
           </EmptyHeader>
         </Empty>
       ) : (
-        <div ref={attachList} className="list">
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        <div ref={attachList} className="list overflow-x-hidden">
+          <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
             {items.map((v) => {
               const item = flat[v.index];
               if (!item) return null;

@@ -131,8 +131,8 @@ async function configuredPortOccupied(): Promise<boolean> {
 
 function spawnServer(): ChildProcess {
   log(`starting standalone mail server on a random port (data: ${env.MAILFAST_DATA_DIR ?? join(SERVER_DIR, ".data")})`);
-  return spawn("bun", ["--watch", "src/index.ts"], {
-    cwd: SERVER_DIR,
+  return spawn("bun", ["--watch", resolve(SERVER_DIR, "src/index.ts")], {
+    cwd: ROOT,
     env: { ...process.env, MAILFAST_PORT: "0", MAILFAST_SERVER_MODE: "standalone" },
     stdio: ["ignore", "pipe", "pipe"],
   });

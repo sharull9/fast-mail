@@ -46,7 +46,7 @@ async function secretKey(): Promise<string | undefined> {
   return key;
 }
 
-async function serverCommand(): Promise<{ cmd: string; args: string[]; env: Record<string, string> }> {
+async function serverCommand(): Promise<{ cmd: string; args: string[]; env: Record<string, string>; cwd?: string }> {
   const dataDir = join(app.getPath("userData"), "data");
   mkdirSync(dataDir, { recursive: true });
   const env: Record<string, string> = {
@@ -63,7 +63,13 @@ async function serverCommand(): Promise<{ cmd: string; args: string[]; env: Reco
     // browser origin allowed to redeem pairing grants.
     env.MAILFAST_PORT = DEV_API_PORT;
     env.MAILFAST_UI_ORIGINS = new URL(DEV_URL).origin;
-    return { cmd: "bun", args: ["--watch", resolve(__dirname, "../../server/src/index.ts")], env };
+    const repoRoot = resolve(__dirname, "../../..");
+    return {
+      cmd: "bun",
+      args: ["--watch", resolve(__dirname, "../../server/src/index.ts")],
+      env,
+      cwd: repoRoot,
+    };
   }
   const exe = process.platform === "win32" ? "mailfast-server.exe" : "mailfast-server";
   env.MAILFAST_STATIC_DIR = join(process.resourcesPath, "web");
@@ -72,8 +78,9 @@ async function serverCommand(): Promise<{ cmd: string; args: string[]; env: Reco
 }
 
 async function startServer(): Promise<number> {
-  const { cmd, args, env } = await serverCommand();
+  const { cmd, args, env, cwd } = await serverCommand();
   const child = spawn(cmd, args, {
+    cwd,
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,

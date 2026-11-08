@@ -252,6 +252,7 @@ kbd {
 .list {
   min-height: 0;
   flex: 1;
+  overflow-x: hidden;
   overflow-y: auto;
   contain: strict;
 }
@@ -561,9 +562,9 @@ kbd {
 .row::after {
   content: "";
   position: absolute;
-  right: -9px;
+  right: 0;
   bottom: -3px;
-  left: -9px;
+  left: 0;
   height: 1px;
   background: color-mix(in oklab, var(--border) 60%, transparent);
   pointer-events: none;
