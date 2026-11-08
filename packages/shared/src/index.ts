@@ -229,7 +229,9 @@ export type ServerEventData =
   | { type: "thread-updated"; threadId: string }
   | { type: "accounts-changed" }
   | { type: "contacts-changed" }
-  | { type: "account-settings-changed" };
+  | { type: "account-settings-changed" }
+  | { type: "chat-spaces-changed" }
+  | { type: "chat-messages-changed"; spaceId: string };
 
 export type ServerEvent = ServerEventData & { accountId: string };
 
@@ -334,3 +336,48 @@ export const devicePreferencesSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
   shortcuts: z.record(z.string(), z.unknown()),
 });
+
+// ------------------------------------------------------------------ Google Chat
+
+export interface ChatSpace {
+  id: string;
+  name: string;
+  type: "SPACE" | "GROUP_CHAT" | "DIRECT_MESSAGE";
+  singleUserBotDm?: boolean;
+  spaceUri?: string;
+  unreadCount: number;
+  lastMessageTime?: number;
+  lastMessageSnippet?: string;
+}
+
+export interface ChatSender {
+  name: string;
+  displayName: string;
+  avatarUrl?: string;
+  email?: string;
+  isSelf?: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  spaceId: string;
+  sender: ChatSender;
+  createTime: number;
+  text: string;
+  formattedText?: string;
+  threadId?: string;
+}
+
+export const sendChatMessageSchema = z.object({
+  text: z.string().trim().min(1, "Message cannot be empty").max(4000),
+  threadId: z.string().optional(),
+});
+export type SendChatMessageRequest = z.infer<typeof sendChatMessageSchema>;
+
+export const createSpaceSchema = z.object({
+  displayName: z.string().trim().min(1, "Name cannot be empty").max(100),
+  spaceType: z.enum(["SPACE", "DIRECT_MESSAGE"]).default("SPACE"),
+  email: z.string().email().optional(),
+});
+export type CreateSpaceRequest = z.infer<typeof createSpaceSchema>;
+

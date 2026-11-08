@@ -135,6 +135,18 @@ export function CommandMenu({
         disabled: false,
       })),
     {
+      id: "global:chat",
+      name: "Google Chat",
+      token: "chat",
+      keywords: ["chat", "google chat", "messages", "spaces", "dm", "dms"],
+      icon: "chat",
+      run: () => {
+        onClose();
+        void navigate({ to: "/chat", search: {} });
+      },
+      disabled: false,
+    },
+    {
       id: "global:compose",
       name: "Compose message",
       token: "compose",

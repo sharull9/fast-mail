@@ -28,6 +28,7 @@ import {
   statusQuery,
   switchAccount,
   signOutAccount,
+  chatSpacesQuery,
 } from "@/lib/data";
 import { HIDDEN_LABELS, SIDEBAR_ORDER, labelName } from "@/lib/format";
 import { Setup } from "@/components/setup";
@@ -52,7 +53,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw, PenSquare, Settings } from "lucide-react";
+import { Check, UserPlus, ChevronsUpDown, LogOut, RefreshCw, PenSquare, Settings, MessageSquare } from "lucide-react";
 import { MailAvatar } from "@/components/mail-avatar";
 import { AppContextMenu } from "@/components/app-context-menu";
 import { ComposerProvider, ComposerPanel, useComposer } from "@/components/composer";
@@ -307,7 +308,10 @@ function Sidebar({
     { ignoreInputs: true },
   );
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
-  const { state } = useSidebar();
+  const { data: spacesData } = useQuery(chatSpacesQuery());
+  const chatUnread = (spacesData?.spaces ?? []).reduce((acc, s) => acc + (s.unreadCount || 0), 0);
+  const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const system = SIDEBAR_ORDER.map((id) => labels.find((l) => l.id === id) ?? { id, name: labelName(id), unread: 0 });
   const user = labels
     .filter((l) => l.type === "user" && !HIDDEN_LABELS.has(l.id))
@@ -376,6 +380,10 @@ function Sidebar({
               >
                 <Icon name="ALL" />
                 Sync now
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void navigate({ to: "/chat", search: {} })}>
+                <MessageSquare className="size-4" />
+                Google Chat
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void navigate({ to: "/settings", search: { section: "appearance" } })}>
                 <Settings />
@@ -503,6 +511,32 @@ function Sidebar({
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+        <SidebarGroup>
+          <SidebarGroupLabel>Chat</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={currentPath.startsWith("/chat")}
+                  tooltip={chatUnread > 0 ? `Google Chat (${chatUnread} unread)` : "Google Chat"}
+                >
+                  <Link
+                    to="/chat"
+                    search={{}}
+                    onClick={() => {
+                      if (isMobile) setOpenMobile(false);
+                    }}
+                  >
+                    <MessageSquare className="size-4" />
+                    <span>Google Chat</span>
+                    {chatUnread > 0 && <SidebarMenuBadge>{chatUnread}</SidebarMenuBadge>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
         {user.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Labels</SidebarGroupLabel>

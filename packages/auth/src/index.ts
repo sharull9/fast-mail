@@ -17,6 +17,11 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
  * so the state cookie is set and checked in the same browser.
  */
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+export const CHAT_SCOPES = [
+  "https://www.googleapis.com/auth/chat.spaces",
+  "https://www.googleapis.com/auth/chat.messages",
+  "https://www.googleapis.com/auth/chat.memberships.readonly",
+];
 export const AUTH_BASE_PATH = "/auth";
 
 export interface GoogleClient {
@@ -52,7 +57,7 @@ export function createMailAuth(opts: MailAuthOptions) {
           google: {
             clientId: opts.google.clientId,
             clientSecret: opts.google.clientSecret,
-            scope: [GMAIL_SCOPE],
+            scope: [GMAIL_SCOPE, ...CHAT_SCOPES],
             // Refresh token for background sync; consent each time so Google always returns one.
             accessType: "offline",
             prompt: "consent",
@@ -119,4 +124,10 @@ export async function googleAccessToken(auth: MailAuth, account: { userId: strin
 /** True if the stored grant includes Gmail access (users can untick scopes on the consent screen). */
 export function hasGmailScope(scope: string | null | undefined): boolean {
   return (scope ?? "").split(/[\s,]+/).includes(GMAIL_SCOPE);
+}
+
+/** True if the stored grant includes Google Chat access. */
+export function hasChatScope(scope: string | null | undefined): boolean {
+  const parts = (scope ?? "").split(/[\s,]+/);
+  return CHAT_SCOPES.some((s) => parts.includes(s));
 }

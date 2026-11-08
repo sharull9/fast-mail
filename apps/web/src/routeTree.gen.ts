@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as MailLabelIdRouteImport } from './routes/mail.$labelId'
@@ -18,6 +19,11 @@ import { Route as MailLabelIdThreadIdRouteImport } from './routes/mail.$labelId.
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -43,6 +49,7 @@ const MailLabelIdThreadIdRoute = MailLabelIdThreadIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/chat'
     | '/search'
     | '/settings'
     | '/mail/$labelId'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/chat'
     | '/search'
     | '/settings'
     | '/mail/$labelId'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/chat'
     | '/search'
     | '/settings'
     | '/mail/$labelId'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   MailLabelIdRoute: typeof MailLabelIdRouteWithChildren
@@ -101,6 +114,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -148,6 +168,7 @@ const MailLabelIdRouteWithChildren = MailLabelIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   MailLabelIdRoute: MailLabelIdRouteWithChildren,

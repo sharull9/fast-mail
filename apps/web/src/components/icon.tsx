@@ -16,9 +16,12 @@ import {
   XIcon,
   ArrowLeftIcon,
   ExternalLinkIcon,
+  MessageSquareIcon,
   type LucideIcon,
 } from "lucide-react";
 const icons: Record<string, LucideIcon> = {
+  chat: MessageSquareIcon,
+  CHAT: MessageSquareIcon,
   INBOX: InboxIcon,
   STARRED: StarIcon,
   IMPORTANT: CircleAlertIcon,
