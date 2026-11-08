@@ -458,6 +458,10 @@ export function openMailStore(opts: OpenOptions) {
     threadMessages(threadId: string): MessageMeta[] {
       return p.messagesOfThread.all({ threadId }).map(toMessageMeta);
     },
+    /** Drop cached bodies so they are refetched (and re-parsed) on next open. */
+    clearBodies() {
+      db.update(messages).set({ bodyHtml: null, bodyText: null, attachments: null }).run();
+    },
     hasThreadBodies(threadId: string): boolean {
       return p.messagesOfThread.all({ threadId }).some((m) => m.bodyHtml !== null || m.bodyText !== null);
     },

@@ -315,20 +315,22 @@ function Sidebar({
   return (
     <MailSidebar collapsible="icon" aria-label="Mail navigation">
       <ImportMailDialog open={importOpen} onOpenChange={setImportOpen} account={account} />
-      <SidebarHeader className="group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:pb-0">
+      <SidebarHeader className="gap-2 group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:pb-0">
         <div className="flex min-w-0 items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 aria-label="Account menu"
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1.5 text-left hover:bg-sidebar-accent group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
+                className="group/account flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 text-left outline-hidden hover:bg-sidebar-accent/70 focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
               >
                 <AccountAvatar account={active} />
                 <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                  <span className="block truncate font-semibold text-foreground">{active?.name || "Mailfast"}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">{account}</span>
+                  <span className="block truncate text-[13px] font-semibold leading-tight text-foreground">
+                    {active?.name || "Mailfast"}
+                  </span>
+                  <span className="block truncate text-[11px] leading-tight text-muted-foreground">{account}</span>
                 </span>
-                <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/70 group-hover/account:text-muted-foreground group-data-[collapsible=icon]:hidden" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-60" align="start">
@@ -431,7 +433,7 @@ function Sidebar({
             </DropdownMenuContent>
           </DropdownMenu>
           <SidebarTrigger
-            className="group-data-[collapsible=icon]:hidden"
+            className="size-7 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden"
             aria-label={state === "collapsed" ? "Expand sidebar" : "Collapse sidebar"}
           />
         </div>
@@ -439,17 +441,17 @@ function Sidebar({
           className="hidden group-data-[collapsible=icon]:inline-flex group-data-[collapsible=icon]:size-8"
           aria-label="Expand sidebar"
         />
-        <SidebarMenu>
-          <SidebarMenuItem>
+        <SidebarMenu className="flex-row gap-1.5 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
+          <SidebarMenuItem className="min-w-0 flex-1 group-data-[collapsible=icon]:flex-none">
             <SidebarMenuButton
               aria-label="Compose message"
-              className="rounded-md bg-primary text-primary-foreground font-medium shadow-xs hover:bg-primary/90 active:bg-primary/95 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center [&>svg]:text-primary-foreground"
+              className="h-7 bg-primary text-[13px] font-medium text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_1px_2px_rgb(0_0_0/0.25)] hover:bg-primary/90 hover:text-primary-foreground active:translate-y-px active:bg-primary/95 active:text-primary-foreground group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center [&>svg]:text-primary-foreground [&>svg]:size-3.5 rounded-full"
               onClick={onCompose}
               tooltip={`Compose message (${shortcutLabel("compose")})`}
             >
-              <PenSquare className="size-4 shrink-0 text-primary-foreground" />
-              <span className="font-medium group-data-[collapsible=icon]:hidden">Compose</span>
-              <kbd className="ml-auto pointer-events-none inline-flex h-5 min-w-5 select-none items-center justify-center rounded border border-primary-foreground/20 bg-primary-foreground/15 px-1.5 font-mono text-[10px] font-medium text-primary-foreground group-data-[collapsible=icon]:hidden">
+              <PenSquare className="size-3 shrink-0 text-primary-foreground" />
+              <span className="font-medium text-primary-foreground group-data-[collapsible=icon]:hidden">Compose</span>
+              <kbd className="ml-auto pointer-events-none inline-flex h-5 min-w-5 select-none items-center justify-center rounded-md bg-primary-foreground/10 px-1.5 font-mono text-[10px] font-semibold text-primary-foreground/75! ring-1 ring-inset ring-primary-foreground/15 group-data-[collapsible=icon]:hidden">
                 {shortcutLabel("compose")}
               </kbd>
             </SidebarMenuButton>
@@ -457,13 +459,13 @@ function Sidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               aria-label="Search mail"
-              className="rounded-md border border-sidebar-border bg-sidebar-accent/50 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:border-sidebar-border group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:hover:bg-sidebar-accent group-data-[collapsible=icon]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:active:bg-sidebar-accent group-data-[collapsible=icon]:active:text-sidebar-accent-foreground"
+              className="size-7 justify-center bg-sidebar-accent/40 text-[13px] font-normal text-muted-foreground ring-1 ring-inset ring-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:ring-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:hover:bg-sidebar-accent group-data-[collapsible=icon]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:active:bg-sidebar-accent group-data-[collapsible=icon]:active:text-sidebar-accent-foreground [&>svg]:size-3.5 rounded-full"
               onClick={onSearch}
               tooltip={`Search mail (${shortcutLabel("search")})`}
             >
               <Icon name="search" />
-              <span className="font-medium group-data-[collapsible=icon]:hidden">Search mail</span>
-              <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center justify-center rounded border border-sidebar-border bg-sidebar/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground shadow-2xs group-data-[collapsible=icon]:hidden">
+              <span className="hidden">Search mail</span>
+              <kbd className="ml-auto pointer-events-none hidden h-5 min-w-5 select-none items-center justify-center rounded-md bg-sidebar/80 px-1.5 font-mono text-[10px] font-semibold text-muted-foreground ring-1 ring-inset ring-sidebar-border">
                 {shortcutLabel("search")}
               </kbd>
             </SidebarMenuButton>

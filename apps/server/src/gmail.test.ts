@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { decodeEntities, parseAddress, parseBatchResponse, toMessageInput } from "@/gmail.ts";
+import {
+  decodeEntities,
+  extractBodyAndAttachments,
+  parseAddress,
+  parseBatchResponse,
+  toMessageInput,
+} from "@/gmail.ts";
 import { Limiter, Priority } from "@/limiter.ts";
 
 test("parses batch responses", () => {
@@ -129,4 +135,110 @@ test("builds MIME message with attachments and utf-8 subject", () => {
   expect(raw).toContain("=?UTF-8?B?");
   expect(raw).toContain("Content-Type: multipart/mixed");
   expect(raw).toContain('Content-Disposition: attachment; filename="test.txt"');
+});
+
+test("extracts inline image part with Content-ID marked inline with contentId", () => {
+  const htmlBody = Buffer.from('<p>Hello <img src="cid:img_hero@domain.com"></p>').toString("base64url");
+  const extracted = extractBodyAndAttachments({
+    mimeType: "multipart/related",
+    parts: [
+      {
+        mimeType: "text/html",
+        body: { data: htmlBody, size: htmlBody.length },
+      },
+      {
+        mimeType: "image/png",
+        filename: "hero.png",
+        headers: [
+          { name: "Content-Type", value: 'image/png; name="hero.png"' },
+          { name: "Content-ID", value: "<img_hero@domain.com>" },
+          { name: "Content-Disposition", value: 'inline; filename="hero.png"' },
+        ],
+        body: { attachmentId: "att_hero_123", size: 8192 },
+      },
+    ],
+  });
+
+  expect(extracted.bodyHtml).toBe('<p>Hello <img src="cid:img_hero@domain.com"></p>');
+  expect(extracted.attachments).toEqual([
+    {
+      id: "att_hero_123",
+      filename: "hero.png",
+      mimeType: "image/png",
+      size: 8192,
+      contentId: "img_hero@domain.com",
+      inline: true,
+    },
+  ]);
+});
+
+test("substitutes cid image with inline body.data as a data URI directly into HTML", () => {
+  const imgData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const htmlBody = Buffer.from('<p>Hero: <img src="cid:qr_logo_123"></p>').toString("base64url");
+  const extracted = extractBodyAndAttachments({
+    mimeType: "multipart/related",
+    parts: [
+      {
+        mimeType: "text/html",
+        body: { data: htmlBody, size: htmlBody.length },
+      },
+      {
+        mimeType: "image/png",
+        headers: [
+          { name: "Content-ID", value: "<qr_logo_123>" },
+          { name: "Content-Disposition", value: "inline" },
+        ],
+        body: { data: imgData, size: imgData.length },
+      },
+    ],
+  });
+
+  expect(extracted.bodyHtml).toBe(`<p>Hero: <img src="data:image/png;base64,${imgData}"></p>`);
+  expect(extracted.attachments).toEqual([]);
+});
+
+test("leaves normal attachments unaffected and not marked inline", () => {
+  const textBody = Buffer.from("Please find attached statement").toString("base64url");
+  const extracted = extractBodyAndAttachments({
+    mimeType: "multipart/mixed",
+    parts: [
+      {
+        mimeType: "text/plain",
+        body: { data: textBody, size: textBody.length },
+      },
+      {
+        mimeType: "application/pdf",
+        filename: "statement.pdf",
+        headers: [{ name: "Content-Disposition", value: 'attachment; filename="statement.pdf"' }],
+        body: { attachmentId: "att_pdf_456", size: 65536 },
+      },
+    ],
+  });
+
+  expect(extracted.bodyText).toBe("Please find attached statement");
+  expect(extracted.attachments).toEqual([
+    {
+      id: "att_pdf_456",
+      filename: "statement.pdf",
+      mimeType: "application/pdf",
+      size: 65536,
+    },
+  ]);
+  expect(extracted.attachments[0]?.inline).toBeFalsy();
+  expect(extracted.attachments[0]?.contentId).toBeUndefined();
+});
+
+test("renders additional text/html parts as isolated blocks", () => {
+  const b64 = (s: string) => Buffer.from(s).toString("base64url");
+  const { bodyHtml } = extractBodyAndAttachments({
+    mimeType: "multipart/mixed",
+    parts: [
+      { mimeType: "text/html", body: { data: b64("<style>body{line-height:0}</style><table></table>") } },
+      { mimeType: "text/html", body: { data: b64("Line one\n\nLine two") } },
+    ],
+  });
+  expect(bodyHtml).toContain("<table></table>");
+  expect(bodyHtml).toContain(
+    '<div style="line-height:normal;font-size:14px;margin-top:12px;white-space:pre-wrap;">Line one\n\nLine two</div>',
+  );
 });

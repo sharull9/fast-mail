@@ -22,6 +22,13 @@ const ON_DEMAND_LABELS = new Set(["SPAM", "TRASH"]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Bump when body extraction (gmail.ts extractBodyAndAttachments) changes in a way that
+ * makes cached bodies wrong. Cached bodies are dropped once and refetched on open.
+ *   2: inline cid: images carry contentId; extra text/html parts render as separate blocks.
+ */
+const BODY_FORMAT = "2";
+
+/**
  * Keeps the local cache in step with Gmail:
  *  - initial: profile + labels + newest inbox page, so the UI fills in ~1s
  *  - realtime loop: outbox (user actions) then history.list deltas, every 15s or on wake
@@ -50,7 +57,12 @@ export class SyncEngine {
     private readonly gmail: Gmail,
     private readonly auth: Pick<Auth, "status" | "account">,
     private readonly events: Events,
-  ) {}
+  ) {
+    if (store.kvGet("body_format") !== BODY_FORMAT) {
+      store.clearBodies();
+      store.kvSet("body_format", BODY_FORMAT);
+    }
+  }
 
   private get me() {
     return this.auth.account();

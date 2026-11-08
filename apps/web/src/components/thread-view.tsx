@@ -14,7 +14,8 @@ import {
 } from "@/lib/api";
 import { act } from "@/components/thread-list";
 import { usePreviewWorkspace } from "@/hooks/use-preview-workspace";
-import type { MessageMeta, ThreadAttachment } from "@mailfast/shared";
+import type { AttachmentMeta, MessageMeta, ThreadAttachment } from "@mailfast/shared";
+import { rewriteCidUrls } from "@/lib/cid";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -184,6 +185,7 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
     for (const m of data.messages) {
       if (m.attachments && m.attachments.length > 0) {
         for (const att of m.attachments) {
+          if (att.inline) continue;
           list.push({
             ...att,
             messageId: m.id,
@@ -853,9 +855,21 @@ function StickyAttachmentsBar({
   );
 }
 
-function HtmlBody({ html }: { html: string }) {
+function HtmlBody({
+  html,
+  messageId,
+  attachments,
+}: {
+  html: string;
+  messageId?: string;
+  attachments?: AttachmentMeta[];
+}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState<number>(200);
+
+  const resolvedHtml = useMemo(() => {
+    return messageId ? rewriteCidUrls(html, messageId, attachments) : html;
+  }, [html, messageId, attachments]);
 
   const srcDoc = useMemo(() => {
     return `<!DOCTYPE html>
@@ -874,18 +888,30 @@ function HtmlBody({ html }: { html: string }) {
       background-color: #ffffff;
       color: #1a1a1a;
     }
+    /* The iframe is sized to its content; if html/body tracked the iframe
+       (height/min-height: 100%) the two would grow each other forever. */
+    html, body {
+      height: auto !important;
+      min-height: 0 !important;
+    }
+    /* Like Gmail, don't let an email's body-level CSS (e.g. body { line-height: 0 })
+       leak into loose text; the email's own elements still style themselves. */
+    #mf-root {
+      display: flow-root;
+      line-height: normal;
+    }
     body {
+      margin: 0;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       font-size: 14px;
-      line-height: 1.5;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
     img {
       max-width: 100%;
     }
-    table {
+    table.border-collapse {
       border-collapse: collapse;
       width: 100%;
       max-width: 100%;
@@ -894,7 +920,7 @@ function HtmlBody({ html }: { html: string }) {
       border-radius: 6px;
       overflow: hidden;
     }
-    th {
+    table.border-collapse th {
       border: 1px solid #e2e8f0;
       background-color: #f8fafc;
       padding: 8px 12px;
@@ -902,7 +928,7 @@ function HtmlBody({ html }: { html: string }) {
       font-weight: 600;
       font-size: 13px;
     }
-    td {
+    table.border-collapse td {
       border: 1px solid #e2e8f0;
       padding: 8px 12px;
       font-size: 13px;
@@ -968,38 +994,40 @@ function HtmlBody({ html }: { html: string }) {
   </style>
 </head>
 <body>
-  ${html}
+  <div id="mf-root">${resolvedHtml}</div>
 </body>
 </html>`;
-  }, [html]);
+  }, [resolvedHtml]);
+
+  const growthCount = useRef(0);
+  const listenerCleanup = useRef<(() => void) | undefined>(undefined);
 
   const updateHeight = useCallback(() => {
     try {
-      const iframe = iframeRef.current;
-      if (!iframe) return;
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-
-      const body = doc.body;
-      const htmlEl = doc.documentElement;
-      if (!body || !htmlEl) return;
-
-      const bodyScroll = body.scrollHeight || 0;
-      const bodyOffset = body.offsetHeight || 0;
-      const htmlScroll = htmlEl.scrollHeight || 0;
-      const htmlOffset = htmlEl.offsetHeight || 0;
-      const bodyRect = Math.ceil(body.getBoundingClientRect().height || 0);
-
-      const maxH = Math.max(bodyScroll, bodyOffset, htmlScroll, htmlOffset, bodyRect);
-      if (maxH > 0) {
-        setHeight(maxH + 16);
-      }
+      const doc = iframeRef.current?.contentDocument;
+      const body = doc?.body;
+      if (!doc || !body) return;
+      // Measure the content wrapper, not the document: the document is at least
+      // as tall as the iframe, so measuring it can only ever grow.
+      const root = doc.getElementById("mf-root") ?? body;
+      const style = doc.defaultView?.getComputedStyle(body);
+      const padding = style ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) : 0;
+      const next = Math.ceil(root.getBoundingClientRect().height + padding);
+      if (next <= 0) return;
+      setHeight((prev) => {
+        if (Math.abs(next - prev) <= 1) return prev;
+        // Content sized in vh still tracks the iframe; stop growing after a runaway.
+        if (next > prev && ++growthCount.current > 60) return prev;
+        return next;
+      });
     } catch {
       // Ignore cross-origin error if any
     }
   }, []);
 
   const attachListeners = useCallback(() => {
+    listenerCleanup.current?.();
+    listenerCleanup.current = undefined;
     updateHeight();
     try {
       const doc = iframeRef.current?.contentDocument;
@@ -1008,8 +1036,9 @@ function HtmlBody({ html }: { html: string }) {
       const ro = new ResizeObserver(() => {
         updateHeight();
       });
-      if (doc.body) ro.observe(doc.body);
-      if (doc.documentElement) ro.observe(doc.documentElement);
+      const root = doc.getElementById("mf-root");
+      if (root) ro.observe(root);
+      else if (doc.body) ro.observe(doc.body);
 
       const images = doc.querySelectorAll("img");
       images.forEach((img) => {
@@ -1019,16 +1048,15 @@ function HtmlBody({ html }: { html: string }) {
         }
       });
 
-      return () => {
-        ro.disconnect();
-      };
+      listenerCleanup.current = () => ro.disconnect();
     } catch {
-      return undefined;
+      // Ignore cross-origin error if any
     }
   }, [updateHeight]);
 
   useEffect(() => {
-    const cleanup = attachListeners();
+    growthCount.current = 0;
+    attachListeners();
     const timers = [
       setTimeout(updateHeight, 100),
       setTimeout(updateHeight, 300),
@@ -1037,7 +1065,8 @@ function HtmlBody({ html }: { html: string }) {
       setTimeout(updateHeight, 3000),
     ];
     return () => {
-      cleanup?.();
+      listenerCleanup.current?.();
+      listenerCleanup.current = undefined;
       timers.forEach(clearTimeout);
     };
   }, [srcDoc, attachListeners, updateHeight]);
@@ -1208,7 +1237,7 @@ function ThreadMessageItem({
         {expanded ? (
           <div>
             {viewMode === "html" && m.bodyHtml ? (
-              <HtmlBody html={m.bodyHtml} />
+              <HtmlBody html={m.bodyHtml} messageId={m.id} attachments={m.attachments} />
             ) : m.bodyText ? (
               <TextBody text={m.bodyText} />
             ) : (
@@ -1217,25 +1246,27 @@ function ThreadMessageItem({
               </p>
             )}
 
-            {m.attachments && m.attachments.length > 0 && (
+            {m.attachments && m.attachments.some((att) => !att.inline) && (
               <div className="mt-4 flex flex-wrap gap-2 pt-3 border-t border-border/50">
-                {m.attachments.map((att, idx) => {
-                  const threadAtt: ThreadAttachment = {
-                    ...att,
-                    messageId: m.id,
-                    fromName: m.from.name || m.from.email,
-                    date: m.date,
-                  };
-                  return (
-                    <AttachmentCard
-                      key={att.id ?? `${att.filename}-${idx}`}
-                      attachment={threadAtt}
-                      onPreview={onPreview}
-                      gmailUrl={gmailUrl}
-                      paneId={paneId}
-                    />
-                  );
-                })}
+                {m.attachments
+                  .filter((att) => !att.inline)
+                  .map((att, idx) => {
+                    const threadAtt: ThreadAttachment = {
+                      ...att,
+                      messageId: m.id,
+                      fromName: m.from.name || m.from.email,
+                      date: m.date,
+                    };
+                    return (
+                      <AttachmentCard
+                        key={att.id ?? `${att.filename}-${idx}`}
+                        attachment={threadAtt}
+                        onPreview={onPreview}
+                        gmailUrl={gmailUrl}
+                        paneId={paneId}
+                      />
+                    );
+                  })}
               </div>
             )}
           </div>

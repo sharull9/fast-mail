@@ -101,6 +101,37 @@ function decodeBase64Url(data: string): string {
   }
 }
 
+function getPartHeader(part: RawPart, name: string): string | undefined {
+  const target = name.toLowerCase();
+  return part.headers?.find((h) => h.name.toLowerCase() === target)?.value;
+}
+
+function substituteCid(html: string, cid: string, replacement: string): string {
+  const cleanCid = cid.trim().replace(/^<|>$/g, "");
+  const variants = new Set([cleanCid]);
+  try {
+    variants.add(encodeURIComponent(cleanCid));
+  } catch {}
+  let result = html;
+  for (const v of variants) {
+    const escaped = v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`cid:(?:<${escaped}>|${escaped})`, "gi");
+    result = result.replace(re, replacement);
+  }
+  return result;
+}
+
+/**
+ * Later text/html parts (disclaimers, footers appended by gateways) are rendered as their
+ * own block so they don't inherit the first part's CSS (e.g. `body { line-height: 0 }`).
+ * Parts without markup keep their line breaks.
+ */
+function extraHtmlPart(html: string): string {
+  const hasMarkup = /<[a-z][\s\S]*>/i.test(html);
+  const style = `line-height:normal;font-size:14px;margin-top:12px;${hasMarkup ? "" : "white-space:pre-wrap;"}`;
+  return `<div style="${style}">${html.trim()}</div>`;
+}
+
 export function extractBodyAndAttachments(payload?: RawPart): {
   bodyHtml: string | null;
   bodyText: string | null;
@@ -118,6 +149,7 @@ export function extractBodyAndAttachments(payload?: RawPart): {
   let bodyHtml: string | null = null;
   let bodyText: string | null = null;
   const attachments: AttachmentMeta[] = [];
+  const candidateParts: RawPart[] = [];
 
   function traverse(part: RawPart) {
     const mimeType = (part.mimeType ?? "").toLowerCase();
@@ -125,36 +157,75 @@ export function extractBodyAndAttachments(payload?: RawPart): {
     const attachmentId = part.body?.attachmentId;
     const isAttachment = Boolean(filename || attachmentId);
 
-    if (isAttachment) {
-      attachments.push({
-        id: attachmentId,
-        filename: filename || "attachment",
-        mimeType: mimeType || "application/octet-stream",
-        size: part.body?.size ?? 0,
-      });
+    // Named containers (e.g. attached message/rfc822) stay attachments; don't merge their bodies.
+    if (isAttachment && !mimeType.startsWith("multipart/")) {
+      candidateParts.push(part);
       return;
     }
 
-    if (mimeType === "text/html" && part.body?.data) {
+    if (part.parts && Array.isArray(part.parts) && part.parts.length > 0) {
+      for (const child of part.parts) {
+        traverse(child);
+      }
+      return;
+    }
+
+    if (!isAttachment && mimeType === "text/html" && part.body?.data) {
       const decoded = decodeBase64Url(part.body.data);
       if (decoded) {
-        bodyHtml = bodyHtml ? `${bodyHtml}<br/>${decoded}` : decoded;
+        bodyHtml = bodyHtml ? `${bodyHtml}${extraHtmlPart(decoded)}` : decoded;
       }
-    } else if (mimeType === "text/plain" && part.body?.data) {
+    } else if (!isAttachment && mimeType === "text/plain" && part.body?.data) {
       const decoded = decodeBase64Url(part.body.data);
       if (decoded) {
         bodyText = bodyText ? `${bodyText}\n${decoded}` : decoded;
       }
-    }
-
-    if (part.parts && Array.isArray(part.parts)) {
-      for (const child of part.parts) {
-        traverse(child);
-      }
+    } else {
+      candidateParts.push(part);
     }
   }
 
   traverse(payload);
+
+  for (const part of candidateParts) {
+    const mimeType = (part.mimeType ?? "").toLowerCase();
+    const filename = (part.filename ?? "").trim();
+    const attachmentId = part.body?.attachmentId;
+    const rawCid = getPartHeader(part, "content-id");
+    const contentId = rawCid ? rawCid.trim().replace(/^<|>$/g, "") : undefined;
+
+    const isReferencedInHtml = Boolean(
+      contentId &&
+      bodyHtml &&
+      (bodyHtml.includes(`cid:${contentId}`) ||
+        bodyHtml.includes(`cid:<${contentId}>`) ||
+        bodyHtml.includes(`cid:${encodeURIComponent(contentId)}`)),
+    );
+
+    // Only parts actually rendered in the body count as inline; inline-disposition PDFs etc. stay listed.
+    const isInline = isReferencedInHtml;
+
+    if (isInline && part.body?.data && !attachmentId && contentId && bodyHtml) {
+      const base64 = part.body.data.replace(/-/g, "+").replace(/_/g, "/");
+      const mime = mimeType || "image/png";
+      const dataUri = `data:${mime};base64,${base64}`;
+      bodyHtml = substituteCid(bodyHtml, contentId, dataUri);
+      continue;
+    }
+
+    const hasAttachment = Boolean(filename || attachmentId);
+    if (hasAttachment) {
+      const att: AttachmentMeta = {
+        id: attachmentId,
+        filename: filename || (contentId ? `${contentId}.${mimeType.split("/")[1] || "png"}` : "attachment"),
+        mimeType: mimeType || "application/octet-stream",
+        size: part.body?.size ?? (part.body?.data ? Buffer.from(part.body.data, "base64").length : 0),
+      };
+      if (contentId) att.contentId = contentId;
+      if (isInline) att.inline = true;
+      attachments.push(att);
+    }
+  }
 
   if (bodyHtml === null && bodyText === null) {
     bodyText = "";

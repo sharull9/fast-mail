@@ -313,9 +313,12 @@ try {
         if (!targetAccountId && !authorized(req)) return json({ error: "unauthorized" }, 401);
 
         try {
+          const accountParam = url.searchParams.get("account");
           const runtime = targetAccountId
             ? (accounts.get(targetAccountId) ?? accounts.resolve(req))
-            : accounts.resolve(req);
+            : accountParam && accounts.get(accountParam)
+              ? accounts.get(accountParam)!
+              : accounts.resolve(req);
           if (!runtime.gmail) return json({ error: "Gmail client not available" }, 500);
           const raw = await runtime.gmail.getAttachment(messageId, attachmentId);
           const buf = Buffer.from(raw.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");

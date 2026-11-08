@@ -102,6 +102,8 @@ export interface AttachmentMeta {
   filename: string;
   mimeType: string;
   size: number;
+  contentId?: string;
+  inline?: boolean;
 }
 
 export interface ThreadAttachment extends AttachmentMeta {
