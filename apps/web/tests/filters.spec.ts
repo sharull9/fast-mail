@@ -44,6 +44,12 @@ async function mockMail(page: Page, oldestMessageDate: number | null = null) {
     const path = url.pathname;
     let body: unknown;
     switch (path) {
+      case "/api/chat/spaces":
+        body = { spaces: [] };
+        break;
+      case "/api/avatar":
+        body = { google: null, gravatar: null };
+        break;
       case "/api/connection":
         body = {
           server: {

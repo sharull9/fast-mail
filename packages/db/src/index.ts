@@ -27,7 +27,19 @@ import {
   NON_PRIMARY_CATEGORY_LABELS,
 } from "@mailfast/shared";
 import * as schema from "./schema.ts";
-import { account, contacts, kv, labels, messages, outbox, threadLabels, threads, user, chatSpaces, chatMessages } from "./schema.ts";
+import {
+  account,
+  contacts,
+  kv,
+  labels,
+  messages,
+  outbox,
+  threadLabels,
+  threads,
+  user,
+  chatSpaces,
+  chatMessages,
+} from "./schema.ts";
 
 export * as schema from "./schema.ts";
 /** Better Auth tables keyed by model name, for `drizzleAdapter(db, { schema: authSchema })`. */
@@ -166,6 +178,7 @@ export function openMailStore(opts: OpenOptions) {
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'SPACE',
       space_uri TEXT,
+      avatar_url TEXT,
       unread_count INTEGER NOT NULL DEFAULT 0,
       last_message_time INTEGER,
       last_message_snippet TEXT
@@ -188,9 +201,24 @@ export function openMailStore(opts: OpenOptions) {
     CREATE INDEX IF NOT EXISTS chat_messages_space_date ON chat_messages (space_id, create_time);
   `);
 
-  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN thread_reply_count INTEGER"); } catch {}
-  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN attachments TEXT"); } catch {}
-  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN quoted_message TEXT"); } catch {}
+  if (
+    !sqlite
+      .query<{ name: string }, []>("PRAGMA table_info(chat_spaces)")
+      .all()
+      .some((column) => column.name === "avatar_url")
+  ) {
+    sqlite.exec("ALTER TABLE chat_spaces ADD COLUMN avatar_url TEXT");
+  }
+
+  try {
+    sqlite.exec("ALTER TABLE chat_messages ADD COLUMN thread_reply_count INTEGER");
+  } catch {}
+  try {
+    sqlite.exec("ALTER TABLE chat_messages ADD COLUMN attachments TEXT");
+  } catch {}
+  try {
+    sqlite.exec("ALTER TABLE chat_messages ADD COLUMN quoted_message TEXT");
+  } catch {}
   try {
     sqlite.exec(`
       INSERT OR IGNORE INTO contacts (email, name, last_seen, count)
@@ -763,6 +791,7 @@ export function openMailStore(opts: OpenOptions) {
         name: r.name,
         type: r.type,
         spaceUri: r.spaceUri ?? undefined,
+        avatarUrl: r.avatarUrl ?? undefined,
         unreadCount: r.unreadCount,
         lastMessageTime: r.lastMessageTime ?? undefined,
         lastMessageSnippet: r.lastMessageSnippet ?? undefined,
@@ -777,6 +806,7 @@ export function openMailStore(opts: OpenOptions) {
         name: row.name,
         type: row.type,
         spaceUri: row.spaceUri ?? undefined,
+        avatarUrl: row.avatarUrl ?? undefined,
         unreadCount: row.unreadCount,
         lastMessageTime: row.lastMessageTime ?? undefined,
         lastMessageSnippet: row.lastMessageSnippet ?? undefined,
@@ -790,6 +820,7 @@ export function openMailStore(opts: OpenOptions) {
           name: space.name,
           type: space.type,
           spaceUri: space.spaceUri ?? null,
+          avatarUrl: space.avatarUrl ?? null,
           unreadCount: space.unreadCount ?? 0,
           lastMessageTime: space.lastMessageTime ?? null,
           lastMessageSnippet: space.lastMessageSnippet ?? null,
@@ -800,6 +831,7 @@ export function openMailStore(opts: OpenOptions) {
             name: space.name,
             type: space.type,
             spaceUri: space.spaceUri ?? null,
+            avatarUrl: space.avatarUrl ?? null,
             unreadCount: space.unreadCount ?? 0,
             lastMessageTime: space.lastMessageTime ?? null,
             lastMessageSnippet: space.lastMessageSnippet ?? null,
@@ -816,6 +848,7 @@ export function openMailStore(opts: OpenOptions) {
             name: space.name,
             type: space.type,
             spaceUri: space.spaceUri ?? null,
+            avatarUrl: space.avatarUrl ?? null,
             unreadCount: space.unreadCount ?? 0,
             lastMessageTime: space.lastMessageTime ?? null,
             lastMessageSnippet: space.lastMessageSnippet ?? null,
@@ -826,6 +859,7 @@ export function openMailStore(opts: OpenOptions) {
               name: space.name,
               type: space.type,
               spaceUri: space.spaceUri ?? null,
+              avatarUrl: space.avatarUrl ?? null,
               lastMessageTime: space.lastMessageTime ?? null,
               lastMessageSnippet: space.lastMessageSnippet ?? null,
             },

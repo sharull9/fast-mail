@@ -101,8 +101,11 @@ export const contacts = sqliteTable(
 export const chatSpaces = sqliteTable("chat_spaces", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  type: text("type", { enum: ["SPACE", "GROUP_CHAT", "DIRECT_MESSAGE"] }).notNull().default("SPACE"),
+  type: text("type", { enum: ["SPACE", "GROUP_CHAT", "DIRECT_MESSAGE"] })
+    .notNull()
+    .default("SPACE"),
   spaceUri: text("space_uri"),
+  avatarUrl: text("avatar_url"),
   unreadCount: integer("unread_count").notNull().default(0),
   lastMessageTime: integer("last_message_time"),
   lastMessageSnippet: text("last_message_snippet"),

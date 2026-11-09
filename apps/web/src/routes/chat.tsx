@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useId } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,7 +13,6 @@ import {
   User,
   Check,
   Quote,
-  CornerDownRight,
   Video,
   Mail,
   Calendar,
@@ -30,13 +29,12 @@ import {
   Copy,
   FileCode,
   FolderArchive,
-  Download,
 } from "lucide-react";
 import { chatSpacesQuery, chatMessagesQuery, authQuery } from "@/lib/data";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MailAvatar } from "@/components/mail-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -130,18 +128,18 @@ function MentionChip({
         <button
           type="button"
           className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-semibold cursor-pointer transition-colors ${
-            isSelf
-              ? "bg-white/25 text-white hover:bg-white/35"
-              : "bg-primary/15 text-primary hover:bg-primary/25"
+            isSelf ? "bg-white/25 text-white hover:bg-white/35" : "bg-primary/15 text-primary hover:bg-primary/25"
           }`}
         >
           <span>@{cleanName}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 overflow-hidden shadow-xl border border-border" align="start">
-        <div className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 pb-3 border-b border-border/50">
+        <div className="bg-linear-to-br from-primary/15 via-primary/5 to-transparent p-4 pb-3 border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className={`flex size-12 items-center justify-center rounded-full text-sm font-semibold border-2 border-background shadow-xs ${avatarStyle}`}>
+            <div
+              className={`flex size-12 items-center justify-center rounded-full text-sm font-semibold border-2 border-background shadow-xs ${avatarStyle}`}
+            >
               {cleanName.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -367,7 +365,10 @@ function detectGoogleServices(
     if (attachments) {
       matchedIdx = attachments.findIndex((att) => {
         if (!att.downloadUri && !att.contentName) return false;
-        if (att.downloadUri && (att.downloadUri === url || url.includes(att.downloadUri) || att.downloadUri.includes(url))) {
+        if (
+          att.downloadUri &&
+          (att.downloadUri === url || url.includes(att.downloadUri) || att.downloadUri.includes(url))
+        ) {
           return true;
         }
         const idMatch = url.match(/\/(?:d|spreadsheets\/d|document\/d|presentation\/d|forms\/d)\/([a-zA-Z0-9_-]+)/);
@@ -411,7 +412,8 @@ function detectGoogleServices(
       if (consumedAttachments.has(idx)) return;
       if (
         att.contentType?.startsWith("application/vnd.google-apps") ||
-        (att.downloadUri && (att.downloadUri.includes("docs.google.com") || att.downloadUri.includes("drive.google.com")))
+        (att.downloadUri &&
+          (att.downloadUri.includes("docs.google.com") || att.downloadUri.includes("drive.google.com")))
       ) {
         const url = att.downloadUri || "";
         if (url && !seenUrls.has(url)) {
@@ -502,7 +504,15 @@ function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
       >
         <div className="bg-[#FBBC04] px-6 py-5 flex items-center justify-center relative select-none">
           <div className="flex items-center gap-4 text-amber-950">
-            <svg className="size-12 drop-shadow-xs" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="size-12 drop-shadow-xs"
+              viewBox="0 0 64 64"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M16 24h24v16a12 12 0 0 1-24 0V24z" fill="#FFF9C4" />
               <path d="M40 28h6a4 4 0 0 1 0 8h-6" />
               <path d="M22 16c0-2 2-3 2-5" />
@@ -574,21 +584,19 @@ function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
       className="overflow-hidden rounded-xl border border-border/80 bg-card hover:bg-muted/50 p-3 max-w-sm shadow-xs cursor-pointer group transition-all hover:scale-[1.01]"
     >
       <div className="flex items-start gap-3">
-        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${brand.bg} ${brand.text} border ${brand.border} shadow-xs`}>
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${brand.bg} ${brand.text} border ${brand.border} shadow-xs`}
+        >
           {brand.icon}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${brand.text}`}>
-              {service.badge}
-            </span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${brand.text}`}>{service.badge}</span>
           </div>
           <div className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
             {service.title}
           </div>
-          <div className="truncate text-[10px] text-muted-foreground mt-0.5">
-            {service.domain}
-          </div>
+          <div className="truncate text-[10px] text-muted-foreground mt-0.5">{service.domain}</div>
         </div>
         <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0 mt-0.5" />
       </div>
@@ -738,14 +746,7 @@ function RenderMessageText({
 
     return tokens.map((token, idx) => {
       if (token.startsWith("@") && token.length > 2) {
-        return (
-          <MentionChip
-            key={idx}
-            name={token}
-            isSelf={isSelf}
-            onOpenDm={onOpenDm}
-          />
-        );
+        return <MentionChip key={idx} name={token} isSelf={isSelf} onOpenDm={onOpenDm} />;
       }
       const mdLinkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
       if (mdLinkMatch) {
@@ -784,7 +785,7 @@ function RenderMessageText({
 
   return (
     <div className="space-y-2">
-      <div className="whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
+      <div className="whitespace-pre-wrap break-all wrap-anywhere">
         {lines.map((line, lineIdx) => {
           const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
           if (headingMatch) {
@@ -794,11 +795,7 @@ function RenderMessageText({
               </div>
             );
           }
-          return (
-            <div key={lineIdx}>
-              {renderRichText(line)}
-            </div>
-          );
+          return <div key={lineIdx}>{renderRichText(line)}</div>;
         })}
       </div>
 
@@ -836,9 +833,9 @@ function RenderAttachments({
           (att.contentType?.startsWith("image/") ||
             att.contentName?.match(/\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i) ||
             att.downloadUri?.startsWith("data:image/")) &&
-            !att.contentName?.match(
-              /\.(json|ts|tsx|js|jsx|pdf|zip|rar|tar|gz|7z|csv|xlsx?|docx?|pptx?|txt|md|html?|css|sh|py)$/i,
-            ),
+          !att.contentName?.match(
+            /\.(json|ts|tsx|js|jsx|pdf|zip|rar|tar|gz|7z|csv|xlsx?|docx?|pptx?|txt|md|html?|css|sh|py)$/i,
+          ),
         );
 
         const mediaSrc = att.downloadUri?.startsWith("data:")
@@ -896,9 +893,7 @@ function RenderAttachments({
               <div className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
                 {att.contentName || "File attachment"}
               </div>
-              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                {att.contentType || "Attachment"}
-              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{att.contentType || "Attachment"}</div>
             </div>
             <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-colors" />
           </div>
@@ -1014,8 +1009,7 @@ function ChatRoute() {
       const found = messages.find(
         (m) =>
           m.id === targetNameOrId ||
-          m.name === targetNameOrId ||
-          (m.name && targetNameOrId && m.name.endsWith(targetNameOrId)) ||
+          (targetNameOrId && m.id.endsWith(targetNameOrId)) ||
           (m.id && targetNameOrId && targetNameOrId.endsWith(m.id)),
       );
       if (found) {
@@ -1057,38 +1051,52 @@ function ChatRoute() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
+  const [selectedMention, setSelectedMention] = useState<string | null>(null);
+  const mentionMenuId = useId();
+  const selectedMentionRef = useRef<HTMLButtonElement>(null);
 
   // Candidates for mentions
   const mentionCandidates = useMemo(() => {
-    const map = new Map<string, { displayName: string; email?: string }>();
+    const map = new Map<string, { displayName: string; email?: string; avatarUrl?: string; googleUserId?: string }>();
     for (const msg of messages) {
       if (msg.sender.displayName && !msg.sender.isSelf && msg.sender.displayName !== "You") {
         map.set(msg.sender.displayName.toLowerCase(), {
           displayName: msg.sender.displayName,
           email: msg.sender.email,
+          avatarUrl: msg.sender.avatarUrl,
+          googleUserId: msg.sender.name,
         });
       }
     }
     for (const sp of spaces) {
-      if (sp.type === "DIRECT_MESSAGE" && sp.name) {
+      if (sp.type === "DIRECT_MESSAGE" && sp.name && !map.has(sp.name.toLowerCase())) {
         map.set(sp.name.toLowerCase(), {
           displayName: sp.name,
+          avatarUrl: sp.avatarUrl,
         });
       }
     }
-    if (!map.has("arafat ulla")) map.set("arafat ulla", { displayName: "Arafat ulla", email: "arafat@info.com" });
-    if (!map.has("kapil kumar")) map.set("kapil kumar", { displayName: "Kapil Kumar", email: "kapil@info.com" });
-    if (!map.has("hemant agaarwal")) map.set("hemant agaarwal", { displayName: "hemant agaarwal", email: "hemant@info.com" });
-    if (!map.has("nikhil thakur")) map.set("nikhil thakur", { displayName: "Nikhil Thakur", email: "nikhil@info.com" });
     return Array.from(map.values());
   }, [messages, spaces]);
 
   const filteredMentionCandidates = useMemo(() => {
     if (!mentionFilter) return mentionCandidates.slice(0, 6);
-    return mentionCandidates
-      .filter((c) => c.displayName.toLowerCase().includes(mentionFilter))
-      .slice(0, 6);
+    return mentionCandidates.filter((c) => c.displayName.toLowerCase().includes(mentionFilter)).slice(0, 6);
   }, [mentionCandidates, mentionFilter]);
+  const selectedMentionIndex = Math.max(
+    0,
+    filteredMentionCandidates.findIndex((c) => c.displayName === selectedMention),
+  );
+  const mentionMenuOpen = showMentionMenu && filteredMentionCandidates.length > 0;
+
+  useEffect(() => {
+    if (mentionMenuOpen) selectedMentionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [mentionMenuOpen, selectedMentionIndex, mentionFilter]);
+
+  useEffect(() => {
+    setShowMentionMenu(false);
+    setSelectedMention(null);
+  }, [activeSpaceId, auth?.activeAccountId]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -1096,10 +1104,11 @@ function ChatRoute() {
 
     const cursorPos = e.target.selectionStart ?? val.length;
     const textBeforeCursor = val.slice(0, cursorPos);
-    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\s]*)$/);
+    const match = textBeforeCursor.match(/(?:^|\s)@([\p{L}\p{N}_. -]*)$/u);
+    setSelectedMention(null);
     if (match) {
       setShowMentionMenu(true);
-      setMentionFilter(match[1]!.toLowerCase());
+      setMentionFilter((match[1] ?? "").toLowerCase());
     } else {
       setShowMentionMenu(false);
     }
@@ -1109,10 +1118,12 @@ function ChatRoute() {
     const cursorPos = textareaRef.current?.selectionStart ?? messageText.length;
     const textBeforeCursor = messageText.slice(0, cursorPos);
     const textAfterCursor = messageText.slice(cursorPos);
-    const newTextBefore = textBeforeCursor.replace(/@([a-zA-Z0-9_\s]*)$/, `@${member.displayName} `);
+    const newTextBefore = textBeforeCursor.replace(/@[\p{L}\p{N}_. -]*$/u, () => `@${member.displayName} `);
     setMessageText(newTextBefore + textAfterCursor);
     setShowMentionMenu(false);
+    setSelectedMention(null);
     textareaRef.current?.focus();
+    requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newTextBefore.length, newTextBefore.length));
   };
 
   const handleOpenDmWithUser = async (name: string, email?: string) => {
@@ -1175,6 +1186,7 @@ function ChatRoute() {
         }
       : undefined;
     setMessageText("");
+    setShowMentionMenu(false);
     setReplyingTo(null);
     sendMutation.mutate({ text, quotedMessage: quote });
   };
@@ -1189,6 +1201,29 @@ function ChatRoute() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (showMentionMenu && e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowMentionMenu(false);
+      return;
+    }
+    if (mentionMenuOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const direction = e.key === "ArrowDown" ? 1 : -1;
+        const index =
+          (selectedMentionIndex + direction + filteredMentionCandidates.length) % filteredMentionCandidates.length;
+        setSelectedMention(filteredMentionCandidates[index]?.displayName ?? null);
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        const member = filteredMentionCandidates[selectedMentionIndex];
+        if (member) handleSelectMention(member);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -1198,9 +1233,7 @@ function ChatRoute() {
   const threadReplies = useMemo(() => {
     if (!threadParent) return [];
     const tId = threadParent.threadId || threadParent.id;
-    return messages.filter(
-      (m) => m.id !== threadParent.id && (m.threadId === tId || m.threadId === threadParent.id),
-    );
+    return messages.filter((m) => m.id !== threadParent.id && (m.threadId === tId || m.threadId === threadParent.id));
   }, [messages, threadParent]);
 
   // Contacts search for new DM
@@ -1341,7 +1374,9 @@ function ChatRoute() {
                   type="button"
                   onClick={() => setActiveTab("DIRECT_MESSAGE")}
                   className={`rounded-md px-2 py-1 font-medium transition-colors ${
-                    activeTab === "DIRECT_MESSAGE" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                    activeTab === "DIRECT_MESSAGE"
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Direct messages
@@ -1369,9 +1404,7 @@ function ChatRoute() {
                 title="Filter unread conversations"
               >
                 <span>Unread</span>
-                <span
-                  className={`size-2 rounded-full ${unreadOnly ? "bg-primary" : "bg-muted-foreground/40"}`}
-                />
+                <span className={`size-2 rounded-full ${unreadOnly ? "bg-primary" : "bg-muted-foreground/40"}`} />
               </button>
             </div>
           </div>
@@ -1386,7 +1419,6 @@ function ChatRoute() {
               filteredSpaces.map((space) => {
                 const isSelected = activeSpace?.id === space.id;
                 const isDm = space.type === "DIRECT_MESSAGE";
-                const avatarStyle = getAvatarStyle(space.name);
 
                 return (
                   <button
@@ -1401,11 +1433,7 @@ function ChatRoute() {
                     {/* Avatar */}
                     <div className="relative shrink-0">
                       {isDm ? (
-                        <div
-                          className={`flex size-8.5 items-center justify-center rounded-full text-xs font-semibold ${avatarStyle}`}
-                        >
-                          {space.name.slice(0, 1).toUpperCase()}
-                        </div>
+                        <MailAvatar name={space.name} email="" image={space.avatarUrl} className="size-8.5" />
                       ) : (
                         <div className="flex size-8.5 items-center justify-center rounded-xl bg-muted text-muted-foreground border border-border group-hover:text-foreground">
                           <Hash className="size-4" />
@@ -1450,13 +1478,7 @@ function ChatRoute() {
               <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
                 <div className="flex items-center gap-3 min-w-0">
                   {activeSpace.type === "DIRECT_MESSAGE" ? (
-                    <div
-                      className={`flex size-8.5 items-center justify-center rounded-full text-xs font-semibold ${getAvatarStyle(
-                        activeSpace.name,
-                      )}`}
-                    >
-                      {activeSpace.name.slice(0, 1).toUpperCase()}
-                    </div>
+                    <MailAvatar name={activeSpace.name} email="" image={activeSpace.avatarUrl} className="size-8.5" />
                   ) : (
                     <div className="flex size-8.5 items-center justify-center rounded-xl bg-muted text-muted-foreground border border-border">
                       <Hash className="size-4" />
@@ -1527,8 +1549,8 @@ function ChatRoute() {
                           const sanitizedId = msg.id.replace(/[^a-zA-Z0-9_-]/g, "_");
                           const isHighlighted =
                             highlightedMsgId === msg.id ||
-                            highlightedMsgId === msg.name ||
-                            (highlightedMsgId && (highlightedMsgId.endsWith(msg.id) || msg.id.endsWith(highlightedMsgId)));
+                            (highlightedMsgId &&
+                              (highlightedMsgId.endsWith(msg.id) || msg.id.endsWith(highlightedMsgId)));
 
                           const googleServiceResult = detectGoogleServices(msg.text || "", msg.attachments);
 
@@ -1542,7 +1564,7 @@ function ChatRoute() {
                             (threadParent &&
                               Boolean(
                                 (threadParent.threadId && threadParent.threadId === msg.id) ||
-                                  (msg.threadId && threadParent.id === msg.threadId),
+                                (msg.threadId && threadParent.id === msg.threadId),
                               ));
 
                           return (
@@ -1550,24 +1572,25 @@ function ChatRoute() {
                               key={msg.id}
                               id={`chat-msg-${sanitizedId}`}
                               className={`group relative flex items-start gap-3 w-full min-w-0 transition-all duration-300 rounded-xl p-1 ${
-                                isHighlighted ? "bg-primary/15 ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+                                isHighlighted
+                                  ? "bg-primary/15 ring-2 ring-primary ring-offset-2 ring-offset-background"
+                                  : ""
                               } ${isSelf ? "flex-row-reverse" : "flex-row"}`}
                             >
-                              <Avatar className="size-8 shrink-0 mt-0.5">
-                                {msg.sender.avatarUrl ? (
-                                   <AvatarImage src={msg.sender.avatarUrl} alt="" />
-                                ) : null}
-                                <AvatarFallback
-                                  className={`text-[11px] font-medium ${
-                                    isSelf ? "bg-primary/20 text-primary" : "bg-muted text-foreground"
-                                  }`}
-                                >
-                                  {isSelf ? "YO" : (msg.sender.displayName || "User").slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
+                              <MailAvatar
+                                name={msg.sender.displayName}
+                                email={isSelf ? currentUserEmail : (msg.sender.email ?? "")}
+                                image={msg.sender.avatarUrl}
+                                googleUserId={msg.sender.name}
+                                className="mt-0.5 size-8"
+                              />
 
-                              <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[65%] min-w-0 flex flex-col ${isSelf ? "items-end ml-auto" : "items-start mr-auto"}`}>
-                                <div className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}>
+                              <div
+                                className={`max-w-[85%] sm:max-w-[75%] md:max-w-[65%] min-w-0 flex flex-col ${isSelf ? "items-end ml-auto" : "items-start mr-auto"}`}
+                              >
+                                <div
+                                  className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+                                >
                                   <span className="text-[11px] font-medium text-foreground">
                                     {isSelf ? "You" : msg.sender.displayName}
                                   </span>
@@ -1578,7 +1601,7 @@ function ChatRoute() {
 
                                 {/* Message Bubble: shrink-to-fit width, word break all to avoid clipping */}
                                 <div
-                                  className={`w-fit max-w-full rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-all [overflow-wrap:anywhere] text-left select-text relative shadow-xs ${
+                                  className={`w-fit max-w-full rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-all wrap-anywhere text-left select-text relative shadow-xs ${
                                     isSelf
                                       ? "bg-primary text-primary-foreground rounded-tr-xs"
                                       : "bg-muted text-foreground rounded-tl-xs"
@@ -1655,7 +1678,9 @@ function ChatRoute() {
                                     title="View thread replies"
                                   >
                                     <MessageSquareText className="size-3" />
-                                    <span>{dynamicReplyCount} {dynamicReplyCount === 1 ? "reply" : "replies"}</span>
+                                    <span>
+                                      {dynamicReplyCount} {dynamicReplyCount === 1 ? "reply" : "replies"}
+                                    </span>
                                   </button>
                                 )}
                               </div>
@@ -1691,7 +1716,9 @@ function ChatRoute() {
                                     type="button"
                                     onClick={() => setThreadParent(msg)}
                                     className={`p-1 hover:bg-muted rounded-full transition-colors ${
-                                      hasActiveThread ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
+                                      hasActiveThread
+                                        ? "text-primary bg-primary/10"
+                                        : "text-muted-foreground hover:text-foreground"
                                     }`}
                                     title="Reply in thread"
                                   >
@@ -1712,22 +1739,38 @@ function ChatRoute() {
               {/* Message composer input */}
               <div className="border-t border-border p-4 bg-background relative">
                 {/* Mention Autocomplete Menu */}
-                {showMentionMenu && filteredMentionCandidates.length > 0 && (
-                  <div className="absolute bottom-full left-4 mb-2 w-64 rounded-xl border border-border bg-popover p-1 shadow-lg z-50 animate-in fade-in-0 zoom-in-95">
+                {mentionMenuOpen && (
+                  <div
+                    id={mentionMenuId}
+                    role="listbox"
+                    aria-label="Mention member"
+                    className="absolute bottom-full left-4 mb-2 w-64 rounded-xl border border-border bg-popover p-1 shadow-lg z-50 animate-in fade-in-0 zoom-in-95"
+                  >
                     <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                       Mention Member
                     </div>
                     <div className="max-h-48 overflow-y-auto space-y-0.5">
-                      {filteredMentionCandidates.map((c) => (
+                      {filteredMentionCandidates.map((c, index) => (
                         <button
                           key={c.displayName}
+                          id={`${mentionMenuId}-${index}`}
+                          ref={index === selectedMentionIndex ? selectedMentionRef : undefined}
+                          role="option"
+                          aria-selected={index === selectedMentionIndex}
+                          tabIndex={-1}
                           type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setSelectedMention(c.displayName)}
                           onClick={() => handleSelectMention(c)}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted transition-colors"
+                          className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted ${index === selectedMentionIndex ? "bg-muted" : ""}`}
                         >
-                          <div className={`flex size-6 items-center justify-center rounded-full text-[10px] font-semibold ${getAvatarStyle(c.displayName)}`}>
-                            {c.displayName.slice(0, 1).toUpperCase()}
-                          </div>
+                          <MailAvatar
+                            name={c.displayName}
+                            email={c.email ?? ""}
+                            image={c.avatarUrl}
+                            googleUserId={c.googleUserId}
+                            className="size-6"
+                          />
                           <div className="min-w-0 flex-1">
                             <div className="truncate font-medium text-foreground">{c.displayName}</div>
                             {c.email && <div className="truncate text-[10px] text-muted-foreground">{c.email}</div>}
@@ -1743,7 +1786,9 @@ function ChatRoute() {
                   <div className="flex items-center justify-between rounded-t-xl border border-b-0 border-border bg-muted/60 px-3 py-2 text-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <Quote className="size-3.5 text-primary shrink-0" />
-                      <span className="font-medium text-foreground shrink-0">Replying to {replyingTo.sender.displayName}:</span>
+                      <span className="font-medium text-foreground shrink-0">
+                        Replying to {replyingTo.sender.displayName}:
+                      </span>
                       <span className="text-muted-foreground truncate">{replyingTo.text || "Attachment"}</span>
                     </div>
                     <Button
@@ -1765,6 +1810,10 @@ function ChatRoute() {
                       value={messageText}
                       onChange={handleTextChange}
                       onKeyDown={handleKeyDown}
+                      onBlur={() => setShowMentionMenu(false)}
+                      aria-autocomplete="list"
+                      aria-controls={mentionMenuOpen ? mentionMenuId : undefined}
+                      aria-activedescendant={mentionMenuOpen ? `${mentionMenuId}-${selectedMentionIndex}` : undefined}
                       placeholder={`Message ${activeSpace.name}... (Press Enter to send, @ to mention)`}
                       rows={1}
                       className={`max-h-32 min-h-10 w-full resize-none border border-input bg-muted/40 px-3.5 py-2.5 pr-10 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring ${
@@ -1777,6 +1826,7 @@ function ChatRoute() {
                         setMessageText((prev) => `${prev}@`);
                         setShowMentionMenu(true);
                         setMentionFilter("");
+                        setSelectedMention(null);
                         textareaRef.current?.focus();
                       }}
                       className="absolute right-2.5 bottom-2.5 text-muted-foreground hover:text-foreground transition-colors"
@@ -1806,12 +1856,7 @@ function ChatRoute() {
                       <MessageSquareText className="size-4 text-primary" />
                       <span>Thread</span>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="size-7 p-0"
-                      onClick={() => setThreadParent(null)}
-                    >
+                    <Button size="sm" variant="ghost" className="size-7 p-0" onClick={() => setThreadParent(null)}>
                       <X className="size-4" />
                     </Button>
                   </div>
@@ -1821,13 +1866,17 @@ function ChatRoute() {
                     {/* Pinned parent message */}
                     <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
                       <div className="flex items-center gap-2 mb-1">
-                        <Avatar className="size-6">
-                          <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
-                            {threadParent.sender.displayName.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+                        <MailAvatar
+                          name={threadParent.sender.displayName}
+                          email={threadParent.sender.isSelf ? currentUserEmail : (threadParent.sender.email ?? "")}
+                          image={threadParent.sender.avatarUrl}
+                          googleUserId={threadParent.sender.name}
+                          className="size-6"
+                        />
                         <span className="font-semibold text-xs">{threadParent.sender.displayName}</span>
-                        <span className="text-[10px] text-muted-foreground">{formatChatTime(threadParent.createTime)}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatChatTime(threadParent.createTime)}
+                        </span>
                       </div>
                       <p className="text-xs text-foreground whitespace-pre-wrap mt-1">{threadParent.text}</p>
                       <RenderAttachments attachments={threadParent.attachments} />
@@ -1847,15 +1896,19 @@ function ChatRoute() {
                     <div className="space-y-3">
                       {threadReplies.map((reply) => (
                         <div key={reply.id} className="flex items-start gap-2.5">
-                          <Avatar className="size-6 shrink-0 mt-0.5">
-                            <AvatarFallback className="text-[10px] bg-muted text-foreground">
-                              {reply.sender.displayName.slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
+                          <MailAvatar
+                            name={reply.sender.displayName}
+                            email={reply.sender.isSelf ? currentUserEmail : (reply.sender.email ?? "")}
+                            image={reply.sender.avatarUrl}
+                            googleUserId={reply.sender.name}
+                            className="mt-0.5 size-6"
+                          />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-medium">{reply.sender.displayName}</span>
-                              <span className="text-[10px] text-muted-foreground">{formatChatTime(reply.createTime)}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {formatChatTime(reply.createTime)}
+                              </span>
                             </div>
                             <div className="mt-0.5 rounded-lg bg-muted/60 px-3 py-1.5 text-xs text-foreground whitespace-pre-wrap break-all">
                               {reply.text}
@@ -1919,9 +1972,7 @@ function ChatRoute() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Google Chat</DialogTitle>
-            <DialogDescription>
-              Start a direct message with a contact or create a new space.
-            </DialogDescription>
+            <DialogDescription>Start a direct message with a contact or create a new space.</DialogDescription>
           </DialogHeader>
 
           {/* Toggle DM vs Space */}
@@ -2011,11 +2062,7 @@ function ChatRoute() {
             </Button>
             <Button
               onClick={handleCreateSpace}
-              disabled={
-                newChatType === "SPACE"
-                  ? !newSpaceName.trim()
-                  : !selectedContact
-              }
+              disabled={newChatType === "SPACE" ? !newSpaceName.trim() : !selectedContact}
               className="text-xs"
             >
               {newChatType === "SPACE" ? "Create Space" : "Start Chat"}

@@ -6,6 +6,7 @@ import { openAppStore } from "@mailfast/db";
 import { env } from "@mailfast/env/server";
 import {
   AUTH_HEADER,
+  avatarRequestSchema,
   sendMessageRequestSchema,
   threadActionsRequestSchema,
   type ConnectionStatus,
@@ -406,7 +407,15 @@ try {
         }
         if (path === "/api/sync" && req.method === "POST" && !auth.activeId() && !req.headers.has("x-mailfast-account"))
           return json({ ok: true });
-        const { store, sync, gmail } = accounts.resolve(req);
+        const { store, sync, gmail, photos } = accounts.resolve(req);
+        if (path === "/api/avatar" && req.method === "GET") {
+          const input = avatarRequestSchema.safeParse({
+            email: url.searchParams.get("email") ?? undefined,
+            googleUserId: url.searchParams.get("googleUserId") ?? undefined,
+          });
+          if (!input.success) return json({ error: "Invalid avatar identity" }, 400);
+          return json(await photos.lookup(input.data), 200, { "cache-control": "private, no-store" });
+        }
         if (path.startsWith("/api/settings/")) {
           const accountId = req.headers.get("x-mailfast-account") ?? auth.activeId() ?? "";
           const scopedEvents = new Events(accountId, (event) => events.send(event));
@@ -423,7 +432,8 @@ try {
               events: scopedEvents,
               token: accountId ? () => auth.token(accountId) : undefined,
               accountEmail: auth.account(accountId),
-              accountName: auth.userName(accountId) || store.accountSettings().displayName || auth.account(accountId) || "User",
+              accountName:
+                auth.userName(accountId) || store.accountSettings().displayName || auth.account(accountId) || "User",
             })) ?? json({ error: "Not found" }, 404)
           );
         }

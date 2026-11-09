@@ -17,6 +17,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
  * so the state cookie is set and checked in the same browser.
  */
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+export const CONTACT_PHOTOS_SCOPE = "https://www.googleapis.com/auth/contacts.readonly";
 export const CHAT_SCOPES = [
   "https://www.googleapis.com/auth/chat.spaces",
   "https://www.googleapis.com/auth/chat.messages",
@@ -57,7 +58,7 @@ export function createMailAuth(opts: MailAuthOptions) {
           google: {
             clientId: opts.google.clientId,
             clientSecret: opts.google.clientSecret,
-            scope: [GMAIL_SCOPE, ...CHAT_SCOPES],
+            scope: [GMAIL_SCOPE, ...CHAT_SCOPES, CONTACT_PHOTOS_SCOPE],
             // Refresh token for background sync; consent each time so Google always returns one.
             accessType: "offline",
             prompt: "consent",

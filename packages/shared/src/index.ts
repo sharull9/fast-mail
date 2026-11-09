@@ -288,6 +288,21 @@ export const contactSchema = z.object({
 });
 export type Contact = z.infer<typeof contactSchema>;
 
+export const avatarRequestSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254).optional(),
+    googleUserId: z
+      .string()
+      .regex(/^users\/\d+$/)
+      .optional(),
+  })
+  .refine((value) => value.email || value.googleUserId, "An email or Google user ID is required");
+export type AvatarRequest = z.infer<typeof avatarRequestSchema>;
+export interface AvatarPhotos {
+  google: string | null;
+  gravatar: string | null;
+}
+
 export const mailExportRequestSchema = z.union([
   z.object({ messageId: z.string().min(1).max(256) }),
   z.object({ threadIds: z.array(z.string().min(1).max(256)).min(1).max(500) }),
@@ -420,4 +435,3 @@ export const createSpaceSchema = z.object({
   email: z.string().email().optional(),
 });
 export type CreateSpaceRequest = z.infer<typeof createSpaceSchema>;
-

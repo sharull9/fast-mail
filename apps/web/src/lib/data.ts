@@ -382,6 +382,7 @@ function receiveEvent(ev: ServerEvent) {
     return;
   }
   if (ev.type === "accounts-changed") {
+    void queryClient.invalidateQueries({ queryKey: ["avatar"] });
     void queryClient.invalidateQueries({ queryKey: ["auth"] });
     return;
   }

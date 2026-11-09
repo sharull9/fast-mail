@@ -18,6 +18,12 @@ async function fixture(page: Page) {
     const id = req.headers()["x-mailfast-account"] ?? activeId;
     let body: unknown;
     switch (url.pathname) {
+      case "/api/chat/spaces":
+        body = { spaces: [] };
+        break;
+      case "/api/avatar":
+        body = { google: null, gravatar: null };
+        break;
       case "/api/connection":
         body = {
           paired: true,

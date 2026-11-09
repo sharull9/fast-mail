@@ -96,7 +96,7 @@ test("threads route passes bounds to store and sync, returns accurate hasMore an
     null,
   );
   const ensure = mock(() => new Promise<void>(() => {}));
-  const scoped: AccountRuntime = {
+  const scoped: Pick<AccountRuntime, "store" | "sync"> = {
     store,
     sync: {
       start() {},

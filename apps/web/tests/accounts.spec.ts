@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { MailAccount, ThreadRow } from "@mailfast/shared";
 
-async function mockAccounts(page: Page) {
+async function mockAccounts(page: Page, image: string | null = null) {
   let accounts: MailAccount[] = [
-    { id: "personal", email: "personal@example.com", name: "Personal", image: null, unread: 3 },
+    { id: "personal", email: "personal@example.com", name: "Personal", image, unread: 3 },
     { id: "work", email: "work@example.com", name: "Work", image: null, unread: 7 },
   ];
   let active = "personal";
@@ -34,6 +34,8 @@ async function mockAccounts(page: Page) {
           origin: "http://localhost:5299",
         },
       };
+    else if (path === "/api/avatar") body = { google: null, gravatar: null };
+    else if (path === "/api/chat/spaces") body = { spaces: [] };
     else if (path === "/api/auth/status") body = status();
     else if (path === "/api/accounts/active") {
       active = req.postDataJSON().id;
@@ -126,3 +128,58 @@ test("sign out of the active email uses the per-account endpoint and retains the
   await expect(page.getByText("Work message", { exact: true })).toBeVisible();
   expect(logouts).toEqual(["personal"]);
 });
+
+const photoImage = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+  "base64",
+);
+const googlePhoto = "https://photos.example.com/profile.png";
+const gravatarPhoto = "https://www.gravatar.com/avatar/fixture?d=404";
+
+test("signed-in Google photos appear in the account button and account menu", async ({ page }) => {
+  await mockAccounts(page, googlePhoto);
+  await page.route(googlePhoto, (route) => route.fulfill({ contentType: "image/png", body: photoImage }));
+  await page.goto("/mail/INBOX");
+  const account = page.getByRole("button", { name: "Account menu" });
+  await expect(account.locator("img")).toHaveAttribute("src", googlePhoto);
+  await account.click();
+  const personal = page.getByRole("menuitem", { name: "personal@example.com, active", exact: true });
+  await expect(personal.locator("img")).toHaveAttribute("src", googlePhoto);
+});
+
+for (const fallback of ["google", "gravatar", "initials"] as const) {
+  test(`account and received mail avatars fall back through Google, Gravatar and initials: ${fallback}`, async ({
+    page,
+  }) => {
+    await mockAccounts(page, fallback === "gravatar" ? googlePhoto : null);
+    const requests: string[] = [];
+    await page.route("**/api/avatar?**", async (route) => {
+      expect(route.request().headers()["x-mailfast-account"]).toBe("personal");
+      await route.fulfill({ json: { google: googlePhoto, gravatar: gravatarPhoto } });
+    });
+    await page.route(googlePhoto, async (route) => {
+      requests.push("google");
+      await route.fulfill(fallback === "google" ? { contentType: "image/png", body: photoImage } : { status: 404 });
+    });
+    await page.route(gravatarPhoto, async (route) => {
+      requests.push("gravatar");
+      await route.fulfill(fallback === "gravatar" ? { contentType: "image/png", body: photoImage } : { status: 404 });
+    });
+    await page.goto("/mail/INBOX");
+    await expect(page.getByText("Personal message", { exact: true })).toBeVisible();
+    const account = page.getByRole("button", { name: "Account menu" });
+    const sender = page.locator('[data-thread-id="same-id"] [data-slot="avatar"]');
+    if (fallback === "initials") {
+      await expect.poll(() => requests.includes("gravatar")).toBe(true);
+      await expect(account.locator('[data-slot="avatar-fallback"]')).toHaveText("P");
+      await expect(sender.locator('[data-slot="avatar-fallback"]')).toHaveText("S");
+      await expect(account.locator("img")).toHaveCount(0);
+      await expect(sender.locator("img")).toHaveCount(0);
+    } else {
+      const expected = fallback === "google" ? googlePhoto : gravatarPhoto;
+      await expect(account.locator("img")).toHaveAttribute("src", expected);
+      await expect(sender.locator("img")).toHaveAttribute("src", expected);
+    }
+    if (fallback === "google") expect(requests).not.toContain("gravatar");
+  });
+}
