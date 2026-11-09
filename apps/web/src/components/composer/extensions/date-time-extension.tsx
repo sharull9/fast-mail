@@ -78,12 +78,7 @@ function DateTimeChipNodeView(props: NodeViewProps) {
                 <Button size="sm" onClick={handleSaveLabel} className="h-7 px-2">
                   <Check className="size-3.5" />
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setIsEditing(false)}
-                  className="h-7 px-2"
-                >
+                <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-7 px-2">
                   <X className="size-3.5" />
                 </Button>
               </div>
@@ -102,12 +97,7 @@ function DateTimeChipNodeView(props: NodeViewProps) {
                 </div>
               </div>
               <div className="flex items-center gap-1 pt-1 border-t border-border/50 justify-between">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs gap-1"
-                  onClick={() => setIsEditing(true)}
-                >
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => setIsEditing(true)}>
                   <Edit2 className="size-3" />
                   <span>Edit label</span>
                 </Button>

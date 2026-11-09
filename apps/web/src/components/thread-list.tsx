@@ -4,7 +4,7 @@ import { appHotkeys, useShortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronRight, CircleAlert, MoreHorizontal } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, MoreHorizontal, Star } from "lucide-react";
 import type { ThreadAction, ThreadRow } from "@mailfast/shared";
 import { authQuery, prefetchThread, runThreadAction } from "@/lib/data";
 import { cleanSnippet, dateGroup, listDate, sendersLabel } from "@/lib/format";
@@ -44,6 +44,7 @@ interface Props {
   total?: number;
   toolbarStart?: ReactNode;
   emptyAction?: ReactNode;
+  collapsed?: boolean;
 }
 
 export function act(ids: string[], action: ThreadAction) {
@@ -62,6 +63,13 @@ function readGroupOverrides(): Record<string, boolean> {
   }
 }
 
+const ROW_WIDE = 70;
+const ROW_NARROW = 72;
+const ROW_COLLAPSED = 40;
+const ROW_GUTTER = 2;
+const HEADER_EXPANDED = 36;
+const HEADER_COLLAPSED = 12;
+
 type ListItem =
   | { kind: "header"; key: string; label: string; count: number; collapsed: boolean }
   | { kind: "thread"; thread: ThreadRow };
@@ -77,10 +85,13 @@ export function ThreadList({
   total,
   toolbarStart,
   emptyAction,
+  collapsed,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingScroll = useRef<string | null>(null);
   const [narrow, setNarrow] = useState(false);
+  const [containerCollapsed, setContainerCollapsed] = useState(false);
+  const isCollapsed = Boolean(collapsed || containerCollapsed);
   const [groupOverrides, setGroupOverrides] = useState(readGroupOverrides);
   const account = useQuery(authQuery).data?.account ?? "";
   const groups = useMemo(() => {
@@ -99,14 +110,14 @@ export function ThreadList({
   const flat = useMemo(() => {
     const result: ListItem[] = [];
     for (const { group, threads } of groups) {
-      const collapsed = groupOverrides[group.key] ?? group.collapsed;
+      const collapsed = isCollapsed ? false : (groupOverrides[group.key] ?? group.collapsed);
       result.push({ kind: "header", ...group, count: threads.length, collapsed });
       if (!collapsed) {
         for (const thread of threads) result.push({ kind: "thread", thread });
       }
     }
     return result;
-  }, [groups, groupOverrides]);
+  }, [groups, groupOverrides, isCollapsed]);
   const visibleThreads = useMemo(() => flat.flatMap((item) => (item.kind === "thread" ? [item.thread] : [])), [flat]);
   const ids = useMemo(() => visibleThreads.map((thread) => thread.id), [visibleThreads]);
   const selection = useThreadSelection(ids);
@@ -130,8 +141,12 @@ export function ThreadList({
     resizeObserver.current = null;
     if (!element) return;
     setNarrow(element.clientWidth < 560);
+    setContainerCollapsed(element.clientWidth <= 64);
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setNarrow(entry.contentRect.width < 560);
+      if (entry) {
+        setNarrow(entry.contentRect.width < 560);
+        setContainerCollapsed(entry.contentRect.width <= 64);
+      }
     });
     observer.observe(element);
     resizeObserver.current = observer;
@@ -139,11 +154,22 @@ export function ThreadList({
   const virtualizer = useVirtualizer({
     count: flat.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (flat[index]?.kind === "header" ? 36 : narrow ? ROW_NARROW : ROW_WIDE),
+    estimateSize: (index) =>
+      flat[index]?.kind === "header"
+        ? isCollapsed
+          ? HEADER_COLLAPSED
+          : HEADER_EXPANDED
+        : isCollapsed
+          ? ROW_COLLAPSED
+          : narrow
+            ? ROW_NARROW
+            : ROW_WIDE,
     overscan: 15,
   });
+  const [, setMeasurementVersion] = useState(0);
   useEffect(() => {
     virtualizer.measure();
+    setMeasurementVersion((v) => v + 1);
     if (pendingScroll.current) {
       const index = flat.findIndex((item) => item.kind === "thread" && item.thread.id === pendingScroll.current);
       if (index >= 0) {
@@ -151,7 +177,7 @@ export function ThreadList({
         pendingScroll.current = null;
       }
     }
-  }, [narrow, flat, virtualizer]);
+  }, [narrow, isCollapsed, flat, virtualizer]);
   const items = virtualizer.getVirtualItems();
   const lastIndex = items.at(-1)?.index ?? 0;
   const lastGroup = groups.at(-1)?.group;
@@ -322,66 +348,68 @@ export function ThreadList({
   const trash = labelId === "TRASH" ? "untrash" : "trash";
   return (
     <>
-      <div className="selection-bar flex h-10 shrink-0 items-center gap-2 border-b px-3 text-xs">
-        <Checkbox
-          aria-label="Select all"
-          checked={count > 0 && count === ids.length ? true : count > 0 ? "indeterminate" : false}
-          onCheckedChange={() => (count === ids.length ? selection.clear() : selection.selectAll())}
-        />
-        {count ? (
-          <span className="shrink-0 text-muted-foreground">{count} selected</span>
-        ) : (
-          (toolbarStart ?? <span className="shrink-0 text-muted-foreground">Select all</span>)
-        )}
-        {count ? (
-          <div className="ml-auto flex items-center gap-0.5">
-            {(
-              [
-                { kind: archive, name: archive === "inbox" ? "Move to Inbox" : "Archive", icon: "archive" },
-                { kind: trash, name: trash === "untrash" ? "Restore" : "Delete", icon: "TRASH" },
-                { kind: "read", name: "Mark read", icon: "read" },
-                { kind: "unread", name: "Mark unread", icon: "unread" },
-                { kind: "star", name: "Star", icon: "STARRED" },
-              ] satisfies { kind: ThreadAction["kind"]; name: string; icon: string }[]
-            ).map((a) => (
-              <IconButton
-                key={a.kind}
-                label={a.name}
-                variant={a.kind === "trash" ? "ghost-destructive" : "ghost"}
-                onClick={() => bulk({ kind: a.kind })}
-              >
-                <Icon name={a.icon} />
-              </IconButton>
-            ))}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <IconButton label="More selection actions">
-                  <MoreHorizontal />
+      {!isCollapsed && (
+        <div className="selection-bar flex h-10 shrink-0 items-center gap-2 border-b px-3 text-xs">
+          <Checkbox
+            aria-label="Select all"
+            checked={count > 0 && count === ids.length ? true : count > 0 ? "indeterminate" : false}
+            onCheckedChange={() => (count === ids.length ? selection.clear() : selection.selectAll())}
+          />
+          {count ? (
+            <span className="shrink-0 text-muted-foreground">{count} selected</span>
+          ) : (
+            (toolbarStart ?? <span className="shrink-0 text-muted-foreground">Select all</span>)
+          )}
+          {count ? (
+            <div className="ml-auto flex items-center gap-0.5">
+              {(
+                [
+                  { kind: archive, name: archive === "inbox" ? "Move to Inbox" : "Archive", icon: "archive" },
+                  { kind: trash, name: trash === "untrash" ? "Restore" : "Delete", icon: "TRASH" },
+                  { kind: "read", name: "Mark read", icon: "read" },
+                  { kind: "unread", name: "Mark unread", icon: "unread" },
+                  { kind: "star", name: "Star", icon: "STARRED" },
+                ] satisfies { kind: ThreadAction["kind"]; name: string; icon: string }[]
+              ).map((a) => (
+                <IconButton
+                  key={a.kind}
+                  label={a.name}
+                  variant={a.kind === "trash" ? "ghost-destructive" : "ghost"}
+                  onClick={() => bulk({ kind: a.kind })}
+                >
+                  <Icon name={a.icon} />
                 </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => bulk({ kind: "unstar" })}>Unstar</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => bulk({ kind: "important" })}>Mark important</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => bulk({ kind: "unimportant" })}>Mark unimportant</DropdownMenuItem>
-                <ExportMailItem selection={{ threadIds: selection.selectedIds }} />
-                <DropdownMenuItem onSelect={selection.clear}>Clear selection</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        ) : (
-          <span
-            className={cn(
-              "ml-auto shrink-0 whitespace-nowrap text-muted-foreground tabular-nums @max-[30rem]:hidden",
-              // Next to the inbox category tabs the count only fits in a wider list panel.
-              toolbarStart && "@max-xl:hidden",
-            )}
-          >
-            {threads.length
-              ? `1–${threads.length} of ${Math.max(threads.length, total ?? 0).toLocaleString()}`
-              : "0 of 0"}
-          </span>
-        )}
-      </div>
+              ))}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton label="More selection actions">
+                    <MoreHorizontal />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => bulk({ kind: "unstar" })}>Unstar</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => bulk({ kind: "important" })}>Mark important</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => bulk({ kind: "unimportant" })}>Mark unimportant</DropdownMenuItem>
+                  <ExportMailItem selection={{ threadIds: selection.selectedIds }} />
+                  <DropdownMenuItem onSelect={selection.clear}>Clear selection</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : (
+            <span
+              className={cn(
+                "ml-auto shrink-0 whitespace-nowrap text-muted-foreground tabular-nums @max-[30rem]:hidden",
+                // Next to the inbox category tabs the count only fits in a wider list panel.
+                toolbarStart && "@max-xl:hidden",
+              )}
+            >
+              {threads.length
+                ? `1–${threads.length} of ${Math.max(threads.length, total ?? 0).toLocaleString()}`
+                : "0 of 0"}
+            </span>
+          )}
+        </div>
+      )}
       {threads.length === 0 ? (
         <Empty>
           <EmptyHeader>
@@ -390,12 +418,36 @@ export function ThreadList({
           </EmptyHeader>
         </Empty>
       ) : (
-        <div ref={attachList} className="list overflow-x-hidden">
+        <div
+          ref={attachList}
+          className={cn(
+            "list overflow-x-hidden",
+            isCollapsed && "scrollbar-none scrollbar-none [&::-webkit-scrollbar]:hidden",
+          )}
+        >
           <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
             {items.map((v) => {
               const item = flat[v.index];
               if (!item) return null;
-              if (item.kind === "header")
+              if (item.kind === "header") {
+                if (isCollapsed) {
+                  return (
+                    <div
+                      key={`group:${item.key}`}
+                      className="absolute inset-x-0 flex h-3 w-full items-center justify-center"
+                      style={{ transform: `translateY(${v.start}px)` }}
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="h-px w-5 bg-border/80" aria-label={`${item.label} (${item.count})`} />
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          {item.label} · {item.count}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  );
+                }
                 return (
                   <button
                     key={`group:${item.key}`}
@@ -418,6 +470,7 @@ export function ThreadList({
                     </span>
                   </button>
                 );
+              }
               const t = item.thread;
               return (
                 <Row
@@ -427,6 +480,7 @@ export function ThreadList({
                   opened={t.id === selectedId}
                   checked={selection.selected.has(t.id)}
                   narrow={narrow}
+                  collapsed={isCollapsed}
                   showImportant={labelId !== "IMPORTANT"}
                   onOpen={onOpen}
                   onClick={click}
@@ -445,17 +499,13 @@ export function ThreadList({
   );
 }
 
-// Card heights, including the 4px gutter between cards (2px above and below each card).
-const ROW_WIDE = 70;
-const ROW_NARROW = 90;
-const ROW_GUTTER = 2;
-
 const Row = memo(function Row({
   thread: t,
   top,
   opened,
   checked,
   narrow,
+  collapsed,
   showImportant,
   onOpen,
   onClick,
@@ -470,6 +520,7 @@ const Row = memo(function Row({
   opened: boolean;
   checked: boolean;
   narrow: boolean;
+  collapsed: boolean;
   showImportant: boolean;
   onOpen: (id: string) => void;
   onClick: (id: string, event: MouseEvent) => void;
@@ -524,44 +575,101 @@ const Row = memo(function Row({
             e.dataTransfer.effectAllowed = "copyMove";
           }}
           className={cn(
-            "row group cursor-grab active:cursor-grabbing",
+            collapsed
+              ? "group absolute inset-x-0 flex w-full items-center justify-center cursor-pointer select-none transition-colors"
+              : "row group cursor-grab active:cursor-grabbing",
             (opened || checked) && "selected",
             opened && "opened",
             t.unread && "unread",
-            narrow && "narrow",
+            narrow && !collapsed && "narrow",
+            collapsed && opened && "bg-accent/80 text-accent-foreground",
+            collapsed && checked && "bg-primary/10",
+            collapsed && !opened && !checked && "hover:bg-muted/50",
           )}
           style={{
             transform: `translateY(${top + ROW_GUTTER}px)`,
-            height: (narrow ? ROW_NARROW : ROW_WIDE) - ROW_GUTTER * 2,
+            height: (collapsed ? ROW_COLLAPSED : narrow ? ROW_NARROW : ROW_WIDE) - ROW_GUTTER * 2,
           }}
           onMouseEnter={() => prefetchThread(t.id)}
           onClick={(e) => onClick(t.id, e)}
         >
-          {/* Level 0: state. Unread lives in the gutter so it never shifts the text. */}
-          {t.unread && <span className="row-unread-dot" aria-hidden="true" />}
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={checked}
-            aria-label={`Select ${t.subject || "conversation"}`}
-            className={cn(
-              "relative flex size-8 shrink-0 cursor-pointer items-center justify-center self-start rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              !checked && "group-hover:ring-1 group-hover:ring-border",
-              checked && "bg-primary text-primary-foreground",
-            )}
-            data-avatar-slot
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle(t.id, e.shiftKey);
-            }}
-          >
-            {checked ? (
-              <Check aria-hidden="true" className="row-selection-check size-4" strokeWidth={3} />
-            ) : (
-              <MailAvatar className="size-8" name={t.senders[0]?.name ?? ""} email={t.senders[0]?.email ?? ""} />
-            )}
-          </button>
-          <div className="row-main">
+          {collapsed ? (
+            <>
+              {opened && (
+                <span
+                  className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-primary"
+                  aria-hidden="true"
+                />
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full">
+                    {checked ? (
+                      <div className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                        <Check aria-hidden="true" className="size-4" strokeWidth={3} />
+                      </div>
+                    ) : (
+                      <MailAvatar className="size-8" name={t.senders[0]?.name ?? ""} email={t.senders[0]?.email ?? ""} />
+                    )}
+                    {t.unread && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-0 right-0 size-2 rounded-full bg-primary ring-1.5 ring-background"
+                      />
+                    )}
+                    {t.starred && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute bottom-0 right-0 flex size-3.5 items-center justify-center rounded-full bg-background ring-1 ring-border/50 text-amber-500 shadow-xs"
+                      >
+                        <Star className="size-2.5 fill-amber-500 text-amber-500" />
+                      </span>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs flex flex-col gap-1 p-2.5 shadow-md">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-xs truncate">{sendersLabel(t.senders, t.messageCount)}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{listDate(t.lastDate)}</span>
+                  </div>
+                  <div className={cn("text-xs truncate", t.unread ? "font-semibold text-foreground" : "text-muted-foreground")}>
+                    {t.subject || "(no subject)"}
+                  </div>
+                  {t.snippet && (
+                    <div className="text-[11px] text-muted-foreground line-clamp-2 leading-tight">
+                      {cleanSnippet(t.snippet)}
+                    </div>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              {/* Level 0: state. Unread lives in the gutter so it never shifts the text. */}
+              {t.unread && <span className="row-unread-dot" aria-hidden="true" />}
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={checked}
+                aria-label={`Select ${t.subject || "conversation"}`}
+                className={cn(
+                  "relative flex size-8 shrink-0 cursor-pointer items-center justify-center self-start rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  !checked && "group-hover:ring-1 group-hover:ring-border",
+                  checked && "bg-primary text-primary-foreground",
+                )}
+                data-avatar-slot
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle(t.id, e.shiftKey);
+                }}
+              >
+                {checked ? (
+                  <Check aria-hidden="true" className="row-selection-check size-4" strokeWidth={3} />
+                ) : (
+                  <MailAvatar className="size-8" name={t.senders[0]?.name ?? ""} email={t.senders[0]?.email ?? ""} />
+                )}
+              </button>
+              <div className="row-main">
             {/* Level 1: who + when, with signals as compact tags. */}
             <div className="row-head">
               <span className="from">{sendersLabel(t.senders, t.messageCount)}</span>
@@ -622,6 +730,8 @@ const Row = memo(function Row({
                 </IconButton>
               ))}
           </div>
+            </>
+          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-60">

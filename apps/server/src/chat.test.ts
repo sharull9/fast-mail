@@ -205,11 +205,7 @@ describe("chat request handling", () => {
       }) as typeof fetch;
 
       const { GoogleChatClient } = await import("./chat.ts");
-      const client = new GoogleChatClient(
-        async () => "fake-token",
-        "Arafat ulla",
-        "arafat@infoware.ws",
-      );
+      const client = new GoogleChatClient(async () => "fake-token", "Arafat ulla", "arafat@infoware.ws");
 
       const spaces = await client.listSpaces();
       expect(spaces.length).toBe(2);
@@ -251,11 +247,7 @@ describe("chat request handling", () => {
       }) as typeof fetch;
 
       const { GoogleChatClient } = await import("./chat.ts");
-      const client = new GoogleChatClient(
-        async () => "fake-token",
-        "Arafat ulla",
-        "arafat@infoware.ws",
-      );
+      const client = new GoogleChatClient(async () => "fake-token", "Arafat ulla", "arafat@infoware.ws");
 
       const msgs = await client.listMessages("spaces/dm123");
       expect(msgs.length).toBe(2);
@@ -268,4 +260,3 @@ describe("chat request handling", () => {
     }
   });
 });
-

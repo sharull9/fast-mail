@@ -66,12 +66,7 @@ export const getSlashCommands = (options?: SlashCommandOptions): SlashCommandIte
     icon: <TableIcon className="size-3.5 text-emerald-500" />,
     keywords: ["table", "grid", "rows", "columns", "spreadsheet"],
     command: ({ editor, range }) => {
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-        .run();
+      editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
     },
   },
   {

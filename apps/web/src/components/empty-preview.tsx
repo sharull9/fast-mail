@@ -1,4 +1,6 @@
-import { Mail } from "lucide-react";
+import { Mail, PanelLeftOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutLabel, type ShortcutId } from "@/lib/hotkeys";
 
 const shortcuts: { label: string; keys: ShortcutId[] }[] = [
@@ -10,10 +12,28 @@ const shortcuts: { label: string; keys: ShortcutId[] }[] = [
   { label: "All keyboard shortcuts", keys: ["shortcuts"] },
 ];
 
-export function EmptyPreview({ summary }: { summary?: string }) {
+export function EmptyPreview({ summary, onExpandList }: { summary?: string; onExpandList?: () => void }) {
   const shortcutLabel = useShortcutLabel();
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="relative h-full overflow-y-auto p-6">
+      {onExpandList && (
+        <div className="absolute top-3 left-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={onExpandList}
+                aria-label="Expand list"
+              >
+                <PanelLeftOpen className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Expand list</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
       <div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center py-6">
         <div className="mb-4 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Mail aria-hidden="true" className="size-5" />

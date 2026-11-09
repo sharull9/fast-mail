@@ -1,13 +1,6 @@
 import { useState } from "react";
 import type { Editor } from "@tiptap/react";
-import {
-  Table as TableIcon,
-  Plus,
-  Trash2,
-  Rows,
-  Columns,
-  Heading,
-} from "lucide-react";
+import { Table as TableIcon, Plus, Trash2, Rows, Columns, Heading } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -24,11 +17,7 @@ export function TableControls({ editor }: TableControlsProps) {
   const isInsideTable = editor.isActive("table");
 
   const handleInsertTable = (rows: number, cols: number) => {
-    editor
-      .chain()
-      .focus()
-      .insertTable({ rows, cols, withHeaderRow: true })
-      .run();
+    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
     setOpen(false);
   };
 
@@ -225,11 +214,7 @@ export function TableControls({ editor }: TableControlsProps) {
               >
                 3 × 3
               </Button>
-              <Button
-                size="sm"
-                className="h-7 text-xs flex-1"
-                onClick={() => handleInsertTable(hoverRows, hoverCols)}
-              >
+              <Button size="sm" className="h-7 text-xs flex-1" onClick={() => handleInsertTable(hoverRows, hoverCols)}>
                 Insert
               </Button>
             </div>

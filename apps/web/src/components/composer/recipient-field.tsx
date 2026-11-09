@@ -71,9 +71,7 @@ export function RecipientField({
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const existingEmails = new Set(
-    (allRecipients ?? recipients).map((r) => extractEmail(r)).filter(Boolean)
-  );
+  const existingEmails = new Set((allRecipients ?? recipients).map((r) => extractEmail(r)).filter(Boolean));
 
   const filteredSuggestions = suggestions.filter((c) => {
     const email = extractEmail(c.email);
@@ -82,14 +80,13 @@ export function RecipientField({
 
   const trimmedInput = inputValue.trim();
   const hasExactMatch = filteredSuggestions.some(
-    (c) => extractEmail(c.email) === extractEmail(trimmedInput) || (c.name && c.name.toLowerCase() === trimmedInput.toLowerCase())
+    (c) =>
+      extractEmail(c.email) === extractEmail(trimmedInput) ||
+      (c.name && c.name.toLowerCase() === trimmedInput.toLowerCase()),
   );
   const showCustomAdd = Boolean(trimmedInput && !hasExactMatch);
 
-  const selectableIds = [
-    ...filteredSuggestions.map((c) => c.email),
-    ...(showCustomAdd ? ["__CUSTOM__"] : []),
-  ];
+  const selectableIds = [...filteredSuggestions.map((c) => c.email), ...(showCustomAdd ? ["__CUSTOM__"] : [])];
 
   // Keep selected item valid
   useEffect(() => {
@@ -302,7 +299,9 @@ export function RecipientField({
                       onMouseEnter={() => setSelectedEmail(contact.email)}
                       className={cn(
                         "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-xs text-left transition-colors cursor-pointer",
-                        isSelected ? "bg-accent text-accent-foreground font-medium" : "text-foreground hover:bg-muted/70",
+                        isSelected
+                          ? "bg-accent text-accent-foreground font-medium"
+                          : "text-foreground hover:bg-muted/70",
                       )}
                     >
                       <MailAvatar
@@ -312,7 +311,9 @@ export function RecipientField({
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{contact.name || contact.email}</div>
-                        {contact.name && <div className="truncate text-[10px] text-muted-foreground">{contact.email}</div>}
+                        {contact.name && (
+                          <div className="truncate text-[10px] text-muted-foreground">{contact.email}</div>
+                        )}
                       </div>
                     </button>
                   );
@@ -331,7 +332,9 @@ export function RecipientField({
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-xs text-left transition-colors cursor-pointer",
                   filteredSuggestions.length > 0 ? "border-t border-border/40 mt-1 pt-2" : "",
-                  selectedEmail === "__CUSTOM__" ? "bg-accent text-accent-foreground font-medium" : "text-foreground hover:bg-muted/70",
+                  selectedEmail === "__CUSTOM__"
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-foreground hover:bg-muted/70",
                 )}
               >
                 <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">

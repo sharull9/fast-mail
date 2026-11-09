@@ -30,6 +30,7 @@ import {
   signOutAccount,
   chatSpacesQuery,
 } from "@/lib/data";
+import { resetLivePreviewWorkspace } from "@/hooks/use-preview-workspace";
 import { HIDDEN_LABELS, SIDEBAR_ORDER, labelName } from "@/lib/format";
 import { Setup } from "@/components/setup";
 import { ConnectionUnavailable, PairingScreen } from "@/components/connection-screens";
@@ -381,7 +382,7 @@ function Sidebar({
                 <Icon name="ALL" />
                 Sync now
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void navigate({ to: "/chat", search: {} })}>
+              <DropdownMenuItem onSelect={() => void navigate({ to: "/chat" })}>
                 <MessageSquare className="size-4" />
                 Google Chat
               </DropdownMenuItem>
@@ -523,7 +524,6 @@ function Sidebar({
                 >
                   <Link
                     to="/chat"
-                    search={{}}
                     onClick={() => {
                       if (isMobile) setOpenMobile(false);
                     }}
@@ -572,6 +572,9 @@ function LabelLink({ id, name, unread }: { id: string; name: string; unread: num
           onMouseEnter={() => prefetchLabel(id)}
           onClick={() => {
             if (isMobile) setOpenMobile(false);
+            if (path.startsWith("/chat") && (id === "INBOX" || id.startsWith("INBOX"))) {
+              resetLivePreviewWorkspace();
+            }
           }}
         >
           <Icon name={id} />

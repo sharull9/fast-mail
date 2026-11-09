@@ -21,7 +21,15 @@ export function PreviewWorkspaceProvider({ children }: { children: ReactNode }) 
 
 // ─── Main Workspace Component ────────────────────────────────────────────────
 
-export function PreviewWorkspace({ onClose, summary }: { onClose: () => void; summary?: string }) {
+export function PreviewWorkspace({
+  onClose,
+  summary,
+  onExpandList,
+}: {
+  onClose: () => void;
+  summary?: string;
+  onExpandList?: () => void;
+}) {
   const workspace = usePreviewWorkspace();
   const { rows } = workspace;
 
@@ -53,7 +61,7 @@ export function PreviewWorkspace({ onClose, summary }: { onClose: () => void; su
                     defaultSize={`${100 / row.panes.length}%`}
                     minSize="10%"
                   >
-                    <WorkspacePane pane={pane} onCloseThread={onClose} summary={summary} />
+                    <WorkspacePane pane={pane} onCloseThread={onClose} summary={summary} onExpandList={onExpandList} />
                   </Panel>
                 </Fragment>
               ))}
@@ -92,7 +100,17 @@ function getDropZone(e: React.DragEvent, element: HTMLElement, canSplitCols: boo
 
 // ─── Individual Pane ─────────────────────────────────────────────────────────
 
-function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseThread: () => void; summary?: string }) {
+function WorkspacePane({
+  pane,
+  onCloseThread,
+  summary,
+  onExpandList,
+}: {
+  pane: Pane;
+  onCloseThread: () => void;
+  summary?: string;
+  onExpandList?: () => void;
+}) {
   const workspace = usePreviewWorkspace();
   const isMultiPane = workspace.rows.length > 1 || (workspace.rows[0]?.panes.length ?? 0) > 1;
   const isFocused = isMultiPane && workspace.focusedPaneId === pane.id;
@@ -158,7 +176,7 @@ function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseTh
     } else {
       workspace.setThreadId(pane.id, null);
       workspace.setAttachment(pane.id, null);
-      if (isFocused) onCloseThread();
+      if (!isMultiPane || isFocused) onCloseThread();
     }
   };
 
@@ -181,11 +199,16 @@ function WorkspacePane({ pane, onCloseThread, summary }: { pane: Pane; onCloseTh
       )}
       {dropZone && <div data-slot="drop-overlay" className={cn("drop-target-overlay", `drop-target-${dropZone}`)} />}
       {pane.attachment ? (
-        <AttachmentPaneView attachment={pane.attachment} paneId={pane.id} onClose={handleClose} />
+        <AttachmentPaneView
+          attachment={pane.attachment}
+          paneId={pane.id}
+          onClose={handleClose}
+          onExpandList={onExpandList}
+        />
       ) : pane.threadId ? (
-        <ThreadView threadId={pane.threadId} paneId={pane.id} onClose={handleClose} />
+        <ThreadView threadId={pane.threadId} paneId={pane.id} onClose={handleClose} onExpandList={onExpandList} />
       ) : (
-        <EmptyPreview summary={summary} />
+        <EmptyPreview summary={summary} onExpandList={onExpandList} />
       )}
     </div>
   );

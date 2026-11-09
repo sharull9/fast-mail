@@ -86,9 +86,7 @@ export function GoogleChipDialog({ onInsert, triggerButton }: GoogleChipDialogPr
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center gap-1.5 border-b border-border/50 pb-1.5">
             <GoogleChipIcon type={docType} className="size-4 shrink-0" />
-            <span className="text-xs font-semibold text-foreground">
-              Insert Google Smart Chip
-            </span>
+            <span className="text-xs font-semibold text-foreground">Insert Google Smart Chip</span>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -176,28 +174,16 @@ export function GoogleChipDialog({ onInsert, triggerButton }: GoogleChipDialogPr
                   <span className="truncate flex-1 font-medium text-foreground">
                     Hikvision iVMS-4200 Attendance Integration
                   </span>
-                  <span className="text-[10px] text-muted-foreground group-hover:text-foreground">
-                    Insert
-                  </span>
+                  <span className="text-[10px] text-muted-foreground group-hover:text-foreground">Insert</span>
                 </button>
               </div>
             </div>
 
             <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-border/50">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setOpen(false)}
-                className="h-7 px-2.5 text-xs"
-              >
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)} className="h-7 px-2.5 text-xs">
                 Cancel
               </Button>
-              <Button
-                size="sm"
-                disabled={!url.trim()}
-                onClick={handleInsert}
-                className="h-7 px-3 text-xs"
-              >
+              <Button size="sm" disabled={!url.trim()} onClick={handleInsert} className="h-7 px-3 text-xs">
                 Insert chip
               </Button>
             </div>

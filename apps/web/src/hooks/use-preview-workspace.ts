@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ThreadAttachment } from "@mailfast/shared";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -133,6 +133,23 @@ function loadLayout(): WorkspaceLayout {
   }
 }
 
+let liveResetWorkspace: (() => void) | null = null;
+
+export function resetStoredPreviewWorkspace(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage unavailable
+  }
+}
+
+export function resetLivePreviewWorkspace(): void {
+  resetStoredPreviewWorkspace();
+  if (liveResetWorkspace) {
+    liveResetWorkspace();
+  }
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function usePreviewWorkspaceState(): WorkspaceState {
@@ -250,6 +267,15 @@ export function usePreviewWorkspaceState(): WorkspaceState {
     saveLayout(fresh);
     setLayout(fresh);
   }, []);
+
+  useEffect(() => {
+    liveResetWorkspace = resetWorkspace;
+    return () => {
+      if (liveResetWorkspace === resetWorkspace) {
+        liveResetWorkspace = null;
+      }
+    };
+  }, [resetWorkspace]);
 
   const canSplitRight = useCallback(
     (id: PaneId) => {

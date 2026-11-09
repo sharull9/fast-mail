@@ -420,4 +420,3 @@ export const createSpaceSchema = z.object({
   email: z.string().email().optional(),
 });
 export type CreateSpaceRequest = z.infer<typeof createSpaceSchema>;
-

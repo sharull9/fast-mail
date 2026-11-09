@@ -6,7 +6,7 @@ const thread: ThreadRow = {
   subject: "Layout test conversation",
   snippet: "Preview text",
   senders: [{ name: "Alice", email: "alice@example.com" }],
-  lastDate: 300,
+  lastDate: Date.now(),
   messageCount: 1,
   unread: false,
   starred: false,
@@ -61,6 +61,9 @@ async function mockMail(page: Page) {
       case "/api/sync":
         body = { ok: true };
         break;
+      case "/api/chat/spaces":
+        body = { spaces: [] };
+        break;
       default:
         throw new Error(`Unexpected API request: ${path}`);
     }
@@ -103,10 +106,10 @@ test("two compact rows contain scopes, dates, categories and counts, with an emp
   await expect(toolbar.getByText("1,200 conversations · 10 unread", { exact: true })).toBeVisible();
   expect(await toolbar.evaluate((element) => element.getBoundingClientRect().height)).toBe(44);
 
-  await expect(toolbar.getByRole("radio", { name: /Inbox/ })).toHaveAttribute("aria-checked", "true");
+  await expect(toolbar.getByRole("combobox", { name: /Filter: Inbox/ })).toBeVisible();
   await expectCenteredTabs(page);
   await expect(page.getByText("No conversation selected", { exact: true })).toBeVisible();
-  await expect(page.getByText("Pick one from the list, or press j / k")).toBeVisible();
+  await expect(page.getByText("Pick a conversation from the list to read it.")).toBeVisible();
   const preview = page.locator(".preview-pane");
   await expect(preview.getByText("Inbox · 1,200 conversations · 10 unread", { exact: true })).toBeVisible();
   await expect(preview.getByRole("region", { name: "Quick shortcuts" })).toBeVisible();
@@ -121,7 +124,7 @@ test("two compact rows contain scopes, dates, categories and counts, with an emp
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
 });
 
-test("list starts at forty percent and both panels stop at thirty percent", async ({ page }) => {
+test("list starts at forty percent and both panels stop at twenty percent", async ({ page }) => {
   await page.goto("/mail/INBOX");
   const group = page.locator('[data-slot="resizable-panel-group"]');
   const list = page.locator(".list-col");
@@ -135,8 +138,8 @@ test("list starts at forty percent and both panels stop at thirty percent", asyn
   await expect.poll(fraction).toBeLessThan(0.41);
   await expectCenteredTabs(page);
   for (const [x, expected] of [
-    [bounds.x, 0.3],
-    [bounds.x + bounds.width, 0.7],
+    [bounds.x + bounds.width * 0.2, 0.2],
+    [bounds.x + bounds.width * 0.8, 0.8],
   ]) {
     const grip = await handle.boundingBox();
     if (!grip) throw new Error("Missing separator bounds");
@@ -153,10 +156,67 @@ test("list starts at forty percent and both panels stop at thirty percent", asyn
   await expect.poll(fraction).toBeGreaterThan(saved - 0.01);
   await expect.poll(fraction).toBeLessThan(saved + 0.01);
   await expect(page.locator(".selection-bar").getByText("1–1 of 1,200")).toBeVisible();
-  await handle.focus();
-  await page.keyboard.press("Home");
-  await expect(page.locator(".list-head").getByText("1,200 conversations · 10 unread")).toBeHidden();
 });
+
+test("list can be collapsed to icon strip and expanded with trigger buttons", async ({ page }) => {
+  await page.goto("/mail/INBOX");
+  const list = page.locator(".list-col");
+  await expect(list).toBeVisible();
+  await page.getByRole("button", { name: "Collapse list" }).click();
+  await expect(page.getByRole("button", { name: "Expand list" })).toBeVisible();
+
+  // In collapsed state, list collapses to 48px icon strip, showing icons instead of hiding all
+  const collapsedBounds = await list.boundingBox();
+  expect(collapsedBounds?.width).toBe(48);
+  await expect(list.getByRole("combobox", { name: /Filter: Inbox/ })).toBeVisible();
+  const collapsedRow = list.getByRole("row", { name: /Alice/ });
+  await expect(collapsedRow).toBeVisible();
+
+  // Clicking an avatar row in collapsed mode opens the conversation
+  await collapsedRow.click();
+  await expect(page.getByRole("heading", { name: thread.subject })).toBeVisible();
+
+  // Expanding restores wide list
+  await page.getByRole("button", { name: "Expand list" }).click();
+  await expect(page.getByRole("button", { name: "Collapse list" })).toBeVisible();
+  await expect.poll(async () => (await list.boundingBox())?.width).toBeGreaterThan(200);
+});
+
+for (const path of ["/mail/INBOX", "/search?q=layout"]) {
+  test(`collapsed conversation avatars keep their virtualized spacing on ${path}`, async ({ page }) => {
+    const threads = Array.from({ length: 30 }, (_, index) => ({
+      ...thread,
+      id: `compact-${index}`,
+      subject: `Compact conversation ${index}`,
+    }));
+    await page.route(/\/api\/(threads|search)(\?|$)/, (route) =>
+      route.fulfill({ json: { threads, hasMore: false } }),
+    );
+    await page.route("**/api/threads/compact-*", (route) => {
+      const id = new URL(route.request().url()).pathname.split("/").at(-1);
+      return route.fulfill({ json: { thread: threads.find((item) => item.id === id), complete: true, messages: [] } });
+    });
+    await page.goto(path);
+    await page.getByRole("button", { name: "Collapse list" }).click();
+
+    const list = page.locator(".list-col");
+    const first = list.locator('[data-thread-id="compact-0"]');
+    const second = list.locator('[data-thread-id="compact-1"]');
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+    await expect.poll(async () => {
+      const firstBounds = await first.boundingBox();
+      const secondBounds = await second.boundingBox();
+      if (!firstBounds || !secondBounds) throw new Error("Missing collapsed conversation rows");
+      return secondBounds.y - firstBounds.y;
+    }).toBe(40);
+
+    await list.locator(".list").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(list.locator('[data-thread-id="compact-29"]')).toBeInViewport();
+  });
+}
 
 test("search shares the split and mobile conversations fill the mailbox", async ({ page }) => {
   await page.goto("/search?q=invoice");
@@ -170,4 +230,34 @@ test("search shares the split and mobile conversations fill the mailbox", async 
   await expect(page.locator(".list-col")).toHaveCount(0);
   await page.getByRole("button", { name: "Close conversation" }).click();
   await expect(page.locator(".list-col")).toBeVisible();
+});
+
+test("very narrow viewports start in the single-pane mail layout", async ({ page }) => {
+  await page.setViewportSize({ width: 110, height: 1024 });
+  await page.goto("/mail/INBOX");
+
+  await expect(page.locator(".mobile-tools")).toBeVisible();
+  await expect(page.locator('[data-slot="resizable-panel-group"]')).toHaveCount(0);
+  await expect(page.locator(".list-col")).toBeVisible();
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCount(0);
+});
+
+test("narrow conversation rows avoid oversized vertical gaps", async ({ page }) => {
+  const secondThread: ThreadRow = {
+    ...thread,
+    id: "secondary",
+    subject: "Second layout test conversation",
+  };
+  await page.route("**/api/threads**", (route) =>
+    route.fulfill({ json: { threads: [thread, secondThread], hasMore: false } }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/mail/INBOX");
+
+  const rows = page.getByRole("row");
+  await expect(rows).toHaveCount(2);
+  const first = await rows.nth(0).boundingBox();
+  const second = await rows.nth(1).boundingBox();
+  if (!first || !second) throw new Error("Missing conversation rows");
+  expect(second.y - first.y).toBeLessThanOrEqual(72);
 });

@@ -197,12 +197,7 @@ export function DateTimePickerPopover({ onInsert, triggerButton }: DateTimePicke
               )}
 
               <div className="flex items-center gap-1.5 pt-1 mt-1 border-t border-border/50">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs flex-1"
-                  onClick={() => setShowCustom(false)}
-                >
+                <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => setShowCustom(false)}>
                   Back
                 </Button>
                 <Button size="sm" className="h-7 text-xs flex-1" onClick={handleCustomInsert}>

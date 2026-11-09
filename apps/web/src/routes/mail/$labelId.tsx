@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Outlet, createFileRoute, retainSearchParams, useNavigate, useParams } from "@tanstack/react-router";
 
@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info, Inbox, Layers, Users, type LucideIcon } from "lucide-react";
+import { Info, Inbox, Layers, PanelLeftClose, PanelLeftOpen, Users, type LucideIcon } from "lucide-react";
 
 /** Icons for the inbox category tabs (Gmail's own metaphors for Primary / Social / Updates). */
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -75,7 +75,12 @@ const tabCompact: Record<number, { trigger: string; hide: string; dot: string }>
 import { PreviewWorkspaceProvider, PreviewWorkspace } from "@/components/preview-workspace";
 import { usePreviewWorkspace } from "@/hooks/use-preview-workspace";
 
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+  usePanelRef,
+} from "@/components/ui/resizable";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -135,6 +140,35 @@ function MailboxContent() {
 
   const isMobile = useIsMobile();
 
+  const listPanelRef = usePanelRef();
+  const [isListCollapsed, setIsListCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("mailfast.list-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (listPanelRef.current) {
+      if (isListCollapsed && !listPanelRef.current.isCollapsed()) {
+        listPanelRef.current.collapse();
+      } else {
+        setIsListCollapsed(listPanelRef.current.isCollapsed());
+      }
+    }
+  }, []);
+
+  const toggleList = useCallback(() => {
+    const panel = listPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, []);
+
   const focusedPane = useMemo(() => {
     for (const row of rows) {
       const p = row.panes.find((pane) => pane.id === focusedPaneId);
@@ -182,7 +216,7 @@ function MailboxContent() {
 
   const close = useCallback(() => {
     setThreadId(focusedPaneId, null);
-    void navigate({ to: "/mail/$labelId", params: { labelId } });
+    void navigate({ to: "/mail/$labelId", params: { labelId }, search: (prev) => prev });
   }, [navigate, labelId, focusedPaneId, setThreadId]);
 
   const more = useCallback(() => void loadMore(labelId, bounds), [labelId, bounds]);
@@ -246,25 +280,66 @@ function MailboxContent() {
   ) : undefined;
 
   const list = (
-    <section className="list-col @container h-full">
-      <header className="list-head">
-        {inbox || SCOPES.includes(labelId) ? (
-          <ScopeFilter
-            labelId={labelId}
-            labels={labels}
-            onChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
-          />
-        ) : (
-          <span className="min-w-0 truncate text-sm font-semibold">{labelName(labelId, label?.name)}</span>
-        )}
+    <section className={cn("list-col @container h-full", isListCollapsed && "list-collapsed w-12 min-w-12 overflow-hidden")}>
+      {isListCollapsed ? (
+        <header className="flex flex-col shrink-0 items-center justify-center gap-1 border-b py-2 px-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={toggleList}
+                aria-label="Expand list"
+              >
+                <PanelLeftOpen className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Expand list</TooltipContent>
+          </Tooltip>
+          {(inbox || SCOPES.includes(labelId)) && (
+            <ScopeFilter
+              labelId={labelId}
+              labels={labels}
+              collapsed
+              onChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
+            />
+          )}
+        </header>
+      ) : (
+        <header className="list-head">
+          {inbox || SCOPES.includes(labelId) ? (
+            <ScopeFilter
+              labelId={labelId}
+              labels={labels}
+              onChange={(id) => void navigate({ to: "/mail/$labelId", params: { labelId: id } })}
+            />
+          ) : (
+            <span className="min-w-0 truncate text-sm font-semibold">{labelName(labelId, label?.name)}</span>
+          )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <DateRangeFilter range={range} onChange={changeRange} />
-          <span className="hidden max-w-52 truncate text-xs text-muted-foreground @min-[820px]:block">
-            {Math.max(threads.length, total ?? 0).toLocaleString()} conversations · {label?.unread ?? 0} unread
-          </span>
-        </div>
-      </header>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <DateRangeFilter range={range} onChange={changeRange} />
+            <span className="hidden max-w-52 truncate text-xs text-muted-foreground @min-[820px]:block">
+              {Math.max(threads.length, total ?? 0).toLocaleString()} conversations · {label?.unread ?? 0} unread
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                  onClick={toggleList}
+                  aria-label="Collapse list"
+                >
+                  <PanelLeftClose className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Collapse list</TooltipContent>
+            </Tooltip>
+          </div>
+        </header>
+      )}
 
       {isLoading ? (
         <div className="loading-list" aria-label="Loading mail">
@@ -274,10 +349,11 @@ function MailboxContent() {
         </div>
       ) : (
         <ThreadList
-          key={`${labelId}:${bounds.after}:${bounds.before}`}
+          key={`${labelId}:${bounds.after}:${bounds.before}:${isListCollapsed ? "collapsed" : "expanded"}`}
           labelId={labelId}
           total={total}
           threads={threads}
+          collapsed={isListCollapsed}
           toolbarStart={categories}
           emptyAction={
             hasRange ? (
@@ -301,13 +377,29 @@ function MailboxContent() {
   return (
     <div className="mailbox">
       <ResizablePanelGroup>
-        <ResizablePanel id="list" defaultSize="40%" minSize="30%">
+        <ResizablePanel
+          id="list"
+          panelRef={listPanelRef}
+          defaultSize="40%"
+          minSize="20%"
+          collapsedSize="48px"
+          collapsible
+          onResize={(panelSize) => {
+            const collapsed = listPanelRef.current?.isCollapsed() ?? panelSize.inPixels <= 52;
+            setIsListCollapsed(collapsed);
+            try {
+              localStorage.setItem("mailfast.list-collapsed", String(collapsed));
+            } catch {
+              // Ignore storage errors
+            }
+          }}
+        >
           {list}
         </ResizablePanel>
 
-        <ResizableHandle />
+        <ResizableHandle onDoubleClick={toggleList} />
 
-        <ResizablePanel id="preview" defaultSize="60%" minSize="30%">
+        <ResizablePanel id="preview" defaultSize="60%" minSize="20%">
           <PreviewWorkspace
             onClose={close}
             summary={`${labelName(labelId, label?.name)} · ${Math.max(threads.length, total ?? 0).toLocaleString()} conversations · ${label?.unread ?? 0} unread`}

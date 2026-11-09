@@ -70,9 +70,7 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>((props, 
 
   return (
     <div className="z-50 w-64 max-h-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md scrollbar-thin">
-      <div className="px-2 py-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-        Tag user
-      </div>
+      <div className="px-2 py-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Tag user</div>
       {props.items.map((item, index) => {
         const isSelected = index === selectedIndex;
         return (

@@ -5,16 +5,18 @@ import { formatBytes, getAttachmentIcon } from "@/components/thread-view";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/icon-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CircleAlert, Download, ExternalLink, Loader2, X } from "lucide-react";
+import { CircleAlert, Download, ExternalLink, Loader2, PanelLeftOpen, X } from "lucide-react";
 
 export function AttachmentPaneView({
   attachment,
   paneId,
   onClose,
+  onExpandList,
 }: {
   attachment: ThreadAttachment;
   paneId: string;
   onClose: () => void;
+  onExpandList?: () => void;
 }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
@@ -72,6 +74,11 @@ export function AttachmentPaneView({
   return (
     <div className="pane @container h-full flex flex-col overflow-hidden">
       <div className="toolbar">
+        {onExpandList && (
+          <IconButton label="Expand list" onClick={onExpandList}>
+            <PanelLeftOpen />
+          </IconButton>
+        )}
         <div className="flex items-center gap-2 min-w-0 max-w-70">
           {getAttachmentIcon(attachment.mimeType, attachment.filename)}
           <div className="min-w-0">

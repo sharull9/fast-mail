@@ -88,6 +88,9 @@ async function mockMail(page: Page, oldestMessageDate: number | null = null) {
       case "/api/threads/actions":
         body = { ok: true };
         break;
+      case "/api/chat/spaces":
+        body = { spaces: [] };
+        break;
       default: {
         const thread = threads.find((item) => path === `/api/threads/${item.id}`);
         if (!thread) throw new Error(`Unexpected API request: ${path}`);
@@ -104,18 +107,20 @@ test.beforeEach(async ({ page }) => {
 
 test("Inbox is the default scope and scopes are absent from the sidebar", async ({ page }) => {
   await page.goto("/mail/INBOX");
-  await expect(page.getByRole("radio", { name: /^Inbox/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("combobox", { name: /Filter: Inbox/ })).toBeVisible();
   for (const labelId of ["ALL", "STARRED", "IMPORTANT"])
     await expect(page.locator(`[data-slot="sidebar"] a[href="/mail/${labelId}"]`)).toHaveCount(0);
   await expect(page.locator(".selection-bar").getByRole("tablist", { name: "Inbox categories" })).toBeVisible();
-  await page.getByRole("radio", { name: /^Inbox/ }).focus();
-  await page.keyboard.press("ArrowRight");
+  await page.getByRole("combobox", { name: /Filter: Inbox/ }).click();
+  await expect(page.getByRole("radiogroup", { name: "Mail filter options" })).toBeVisible();
+  await page.getByRole("radio", { name: /^All mail/ }).click();
   await expect(page).toHaveURL(/\/mail\/ALL$/);
-  await expect(page.getByRole("radio", { name: /^All mail/ })).toBeFocused();
+  await expect(page.getByRole("combobox", { name: /Filter: All mail/ })).toBeVisible();
 });
 
 test("scope changes and thread opening and closing preserve URL dates", async ({ page }) => {
   await page.goto(`/mail/INBOX?${query}`);
+  await page.getByRole("combobox", { name: /Filter: Inbox/ }).click();
   await page.getByRole("radio", { name: /^Starred/ }).click();
   await expect(page).toHaveURL(new RegExp(`/mail/STARRED\\?${query}$`));
   await page.locator('[data-thread-id="recent"]').click();
@@ -225,13 +230,14 @@ test("URL dates cannot extend into the future", async ({ page }) => {
   await page.goto(`/mail/INBOX?from=${dateKey(dayOffset(1))}&to=${dateKey(dayOffset(30))}`);
   await expect(page.getByRole("button", { name: /^Date range: Until / })).toBeVisible();
   await expect(page.locator('[data-thread-id="recent"]')).toBeVisible();
+  await page.getByRole("combobox", { name: /Filter: Inbox/ }).click();
   await page.getByRole("radio", { name: /^Starred/ }).click();
   await expect(page).toHaveURL(new RegExp(`/STARRED\\?to=${dateKey(today)}$`));
 });
 
 test("invalid dates are ignored and category labels activate Inbox", async ({ page }) => {
   await page.goto("/mail/CATEGORY_SOCIAL?from=2026-02-30&to=invalid");
-  await expect(page.getByRole("radio", { name: /^Inbox/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("combobox", { name: /Filter: Inbox/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Date range: Any time" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Social", exact: true })).toHaveAttribute("aria-selected", "true");
 });

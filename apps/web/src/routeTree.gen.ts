@@ -10,18 +10,21 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ChatRouteImport } from './routes/chat'
+import { Route as ChatRouteRouteImport } from './routes/chat/route'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as MailLabelIdRouteImport } from './routes/mail.$labelId'
-import { Route as MailLabelIdThreadIdRouteImport } from './routes/mail.$labelId.$threadId'
+import { Route as ChatIndexRouteImport } from './routes/chat/index'
+import { Route as MailLabelIdRouteImport } from './routes/mail/$labelId'
+import { Route as ChatDirectIdRouteImport } from './routes/chat/direct.$id'
+import { Route as ChatSpacesIdRouteImport } from './routes/chat/spaces.$id'
+import { Route as MailLabelIdThreadIdRouteImport } from './routes/mail/$labelId.$threadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChatRoute = ChatRouteImport.update({
+const ChatRouteRoute = ChatRouteRouteImport.update({
   id: '/chat',
   path: '/chat',
   getParentRoute: () => rootRouteImport,
@@ -36,10 +39,25 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatIndexRoute = ChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ChatRouteRoute,
+} as any)
 const MailLabelIdRoute = MailLabelIdRouteImport.update({
   id: '/mail/$labelId',
   path: '/mail/$labelId',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ChatDirectIdRoute = ChatDirectIdRouteImport.update({
+  id: '/direct/$id',
+  path: '/direct/$id',
+  getParentRoute: () => ChatRouteRoute,
+} as any)
+const ChatSpacesIdRoute = ChatSpacesIdRouteImport.update({
+  id: '/spaces/$id',
+  path: '/spaces/$id',
+  getParentRoute: () => ChatRouteRoute,
 } as any)
 const MailLabelIdThreadIdRoute = MailLabelIdThreadIdRouteImport.update({
   id: '/$threadId',
@@ -49,27 +67,35 @@ const MailLabelIdThreadIdRoute = MailLabelIdThreadIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/chat': typeof ChatRoute
+  '/chat': typeof ChatRouteRouteWithChildren
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
+  '/chat/': typeof ChatIndexRoute
+  '/chat/direct/$id': typeof ChatDirectIdRoute
+  '/chat/spaces/$id': typeof ChatSpacesIdRoute
   '/mail/$labelId/$threadId': typeof MailLabelIdThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
+  '/chat': typeof ChatIndexRoute
+  '/chat/direct/$id': typeof ChatDirectIdRoute
+  '/chat/spaces/$id': typeof ChatSpacesIdRoute
   '/mail/$labelId/$threadId': typeof MailLabelIdThreadIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/chat': typeof ChatRoute
+  '/chat': typeof ChatRouteRouteWithChildren
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/mail/$labelId': typeof MailLabelIdRouteWithChildren
+  '/chat/': typeof ChatIndexRoute
+  '/chat/direct/$id': typeof ChatDirectIdRoute
+  '/chat/spaces/$id': typeof ChatSpacesIdRoute
   '/mail/$labelId/$threadId': typeof MailLabelIdThreadIdRoute
 }
 export interface FileRouteTypes {
@@ -80,14 +106,19 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/mail/$labelId'
+    | '/chat/'
+    | '/chat/direct/$id'
+    | '/chat/spaces/$id'
     | '/mail/$labelId/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/chat'
     | '/search'
     | '/settings'
     | '/mail/$labelId'
+    | '/chat'
+    | '/chat/direct/$id'
+    | '/chat/spaces/$id'
     | '/mail/$labelId/$threadId'
   id:
     | '__root__'
@@ -96,12 +127,15 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/mail/$labelId'
+    | '/chat/'
+    | '/chat/direct/$id'
+    | '/chat/spaces/$id'
     | '/mail/$labelId/$threadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ChatRoute: typeof ChatRoute
+  ChatRouteRoute: typeof ChatRouteRouteWithChildren
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   MailLabelIdRoute: typeof MailLabelIdRouteWithChildren
@@ -120,7 +154,7 @@ declare module '@tanstack/react-router' {
       id: '/chat'
       path: '/chat'
       fullPath: '/chat'
-      preLoaderRoute: typeof ChatRouteImport
+      preLoaderRoute: typeof ChatRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -137,12 +171,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/chat/': {
+      id: '/chat/'
+      path: '/'
+      fullPath: '/chat/'
+      preLoaderRoute: typeof ChatIndexRouteImport
+      parentRoute: typeof ChatRouteRoute
+    }
     '/mail/$labelId': {
       id: '/mail/$labelId'
       path: '/mail/$labelId'
       fullPath: '/mail/$labelId'
       preLoaderRoute: typeof MailLabelIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/chat/direct/$id': {
+      id: '/chat/direct/$id'
+      path: '/direct/$id'
+      fullPath: '/chat/direct/$id'
+      preLoaderRoute: typeof ChatDirectIdRouteImport
+      parentRoute: typeof ChatRouteRoute
+    }
+    '/chat/spaces/$id': {
+      id: '/chat/spaces/$id'
+      path: '/spaces/$id'
+      fullPath: '/chat/spaces/$id'
+      preLoaderRoute: typeof ChatSpacesIdRouteImport
+      parentRoute: typeof ChatRouteRoute
     }
     '/mail/$labelId/$threadId': {
       id: '/mail/$labelId/$threadId'
@@ -153,6 +208,22 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface ChatRouteRouteChildren {
+  ChatIndexRoute: typeof ChatIndexRoute
+  ChatDirectIdRoute: typeof ChatDirectIdRoute
+  ChatSpacesIdRoute: typeof ChatSpacesIdRoute
+}
+
+const ChatRouteRouteChildren: ChatRouteRouteChildren = {
+  ChatIndexRoute: ChatIndexRoute,
+  ChatDirectIdRoute: ChatDirectIdRoute,
+  ChatSpacesIdRoute: ChatSpacesIdRoute,
+}
+
+const ChatRouteRouteWithChildren = ChatRouteRoute._addFileChildren(
+  ChatRouteRouteChildren,
+)
 
 interface MailLabelIdRouteChildren {
   MailLabelIdThreadIdRoute: typeof MailLabelIdThreadIdRoute
@@ -168,7 +239,7 @@ const MailLabelIdRouteWithChildren = MailLabelIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ChatRoute: ChatRoute,
+  ChatRouteRoute: ChatRouteRouteWithChildren,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   MailLabelIdRoute: MailLabelIdRouteWithChildren,

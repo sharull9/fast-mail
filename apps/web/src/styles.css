@@ -256,6 +256,15 @@ kbd {
   overflow-y: auto;
   contain: strict;
 }
+.list-collapsed .list,
+.list.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.list-collapsed .list::-webkit-scrollbar,
+.list.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 .empty {
   padding: 48px 20px;
   color: var(--muted-foreground);

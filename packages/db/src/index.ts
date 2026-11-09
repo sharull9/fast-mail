@@ -27,7 +27,19 @@ import {
   NON_PRIMARY_CATEGORY_LABELS,
 } from "@mailfast/shared";
 import * as schema from "./schema.ts";
-import { account, contacts, kv, labels, messages, outbox, threadLabels, threads, user, chatSpaces, chatMessages } from "./schema.ts";
+import {
+  account,
+  contacts,
+  kv,
+  labels,
+  messages,
+  outbox,
+  threadLabels,
+  threads,
+  user,
+  chatSpaces,
+  chatMessages,
+} from "./schema.ts";
 
 export * as schema from "./schema.ts";
 /** Better Auth tables keyed by model name, for `drizzleAdapter(db, { schema: authSchema })`. */
@@ -188,9 +200,15 @@ export function openMailStore(opts: OpenOptions) {
     CREATE INDEX IF NOT EXISTS chat_messages_space_date ON chat_messages (space_id, create_time);
   `);
 
-  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN thread_reply_count INTEGER"); } catch {}
-  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN attachments TEXT"); } catch {}
-  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN quoted_message TEXT"); } catch {}
+  try {
+    sqlite.exec("ALTER TABLE chat_messages ADD COLUMN thread_reply_count INTEGER");
+  } catch {}
+  try {
+    sqlite.exec("ALTER TABLE chat_messages ADD COLUMN attachments TEXT");
+  } catch {}
+  try {
+    sqlite.exec("ALTER TABLE chat_messages ADD COLUMN quoted_message TEXT");
+  } catch {}
   try {
     sqlite.exec(`
       INSERT OR IGNORE INTO contacts (email, name, last_seen, count)

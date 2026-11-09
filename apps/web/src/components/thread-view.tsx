@@ -40,6 +40,7 @@ import {
   Loader2,
   Mail,
   MoreHorizontal,
+  PanelLeftOpen,
   Paperclip,
   Reply,
   ReplyAll,
@@ -69,7 +70,17 @@ import { cn } from "@/lib/utils";
  * Thread conversation view. Displays full message details, sender, recipients,
  * attachments, and complete HTML/text bodies with one-click actions.
  */
-export function ThreadView({ threadId, paneId, onClose }: { threadId: string; paneId?: string; onClose: () => void }) {
+export function ThreadView({
+  threadId,
+  paneId,
+  onClose,
+  onExpandList,
+}: {
+  threadId: string;
+  paneId?: string;
+  onClose: () => void;
+  onExpandList?: () => void;
+}) {
   const { data, isPending, error } = useQuery(threadQuery(threadId));
   const account = useQuery(authQuery).data?.account ?? "";
   const { data: labels } = useLiveQuery({ query: (q) => q.from({ l: labelsCollection }) });
@@ -206,6 +217,11 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
     return (
       <div className="pane h-full" aria-label="Loading conversation">
         <div className="toolbar">
+          {onExpandList && (
+            <IconButton label="Expand list" onClick={onExpandList}>
+              <PanelLeftOpen />
+            </IconButton>
+          )}
           <Skeleton className="h-7 w-40" />
           <div
             className="flex-1 h-full min-w-4 cursor-grab active:cursor-grabbing self-stretch select-none"
@@ -255,6 +271,11 @@ export function ThreadView({ threadId, paneId, onClose }: { threadId: string; pa
     // The reading pane is its own size container: it is resizable, so its layout follows its width, not the window's.
     <div ref={paneRef} className="pane @container h-full">
       <div className="toolbar">
+        {onExpandList && (
+          <IconButton label="Expand list" onClick={onExpandList}>
+            <PanelLeftOpen />
+          </IconButton>
+        )}
         <IconButton
           label={inInbox ? "Archive" : "Move to Inbox"}
           onClick={() => act([threadId], { kind: inInbox ? "archive" : "inbox" })}

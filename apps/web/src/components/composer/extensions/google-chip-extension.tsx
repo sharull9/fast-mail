@@ -173,16 +173,10 @@ function GoogleChipNodeView(props: NodeViewProps) {
             title={title}
           >
             <GoogleChipIcon type={type} className="size-4 shrink-0" />
-            <span className="font-medium text-foreground tracking-tight max-w-72 truncate">
-              {title}
-            </span>
+            <span className="font-medium text-foreground tracking-tight max-w-72 truncate">{title}</span>
           </span>
         </PopoverTrigger>
-        <PopoverContent
-          className="w-80 p-3 shadow-lg border border-border"
-          align="start"
-          sideOffset={4}
-        >
+        <PopoverContent className="w-80 p-3 shadow-lg border border-border" align="start" sideOffset={4}>
           {isEditing ? (
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-foreground">Edit chip title</span>
@@ -204,12 +198,7 @@ function GoogleChipNodeView(props: NodeViewProps) {
                 <Button size="sm" onClick={handleSaveTitle} className="h-7 px-2">
                   <Check className="size-3.5" />
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setIsEditing(false)}
-                  className="h-7 px-2"
-                >
+                <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-7 px-2">
                   <X className="size-3.5" />
                 </Button>
               </div>
@@ -233,12 +222,7 @@ function GoogleChipNodeView(props: NodeViewProps) {
                   <ExternalLink className="size-3" />
                   <span>Open</span>
                 </a>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs gap-1"
-                  onClick={() => setIsEditing(true)}
-                >
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => setIsEditing(true)}>
                   <Edit2 className="size-3" />
                   <span>Rename</span>
                 </Button>
@@ -331,7 +315,14 @@ export const GoogleChipExtension = Node.create({
           "display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 6px; border-radius: 6px; background-color: #f1f3f4; color: #202124; text-decoration: none; font-size: 13px; font-weight: 500; vertical-align: middle; line-height: 20px; border: 1px solid #dadce0; margin: 0 2px;",
       }),
       ["span", { style: "display: inline-flex; align-items: center; justify-content: center;" }, ["raw", iconSvg]],
-      ["span", { style: "color: #202124; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;" }, title],
+      [
+        "span",
+        {
+          style:
+            "color: #202124; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;",
+        },
+        title,
+      ],
     ];
   },
 

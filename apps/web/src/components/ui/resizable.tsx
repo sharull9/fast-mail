@@ -1,5 +1,12 @@
 import type { ComponentProps } from "react";
-import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panels";
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+  usePanelRef,
+  type PanelImperativeHandle,
+} from "react-resizable-panels";
 import { cn } from "@/lib/utils";
 
 function ResizablePanelGroup({ className, ...props }: ComponentProps<typeof Group>) {
@@ -25,6 +32,7 @@ function ResizableHandle({ className, ...props }: ComponentProps<typeof Separato
     <Separator
       data-slot="resizable-handle"
       aria-label="Resize conversation panels"
+      title="Drag to resize, double-click to collapse/expand"
       className={cn(
         "relative z-10 w-px bg-border after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary focus-visible:bg-primary data-[separator=active]:bg-primary",
         className,
@@ -34,4 +42,4 @@ function ResizableHandle({ className, ...props }: ComponentProps<typeof Separato
   );
 }
 
-export { ResizablePanelGroup, Panel as ResizablePanel, ResizableHandle };
+export { ResizablePanelGroup, Panel as ResizablePanel, ResizableHandle, usePanelRef, type PanelImperativeHandle };
