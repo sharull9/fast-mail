@@ -526,7 +526,7 @@ function ChatRoute() {
                           return (
                             <div
                               key={msg.id}
-                              className={`flex items-start gap-3 w-full ${isSelf ? "justify-end flex-row-reverse" : "justify-start flex-row"}`}
+                              className={`flex items-start gap-3 w-full ${isSelf ? "flex-row-reverse" : "flex-row"}`}
                             >
                               <Avatar className="size-8 shrink-0 mt-0.5">
                                 {msg.sender.avatarUrl ? (
@@ -541,7 +541,7 @@ function ChatRoute() {
                                 </AvatarFallback>
                               </Avatar>
 
-                              <div className={`max-w-[75%] ${isSelf ? "items-end text-right" : "items-start text-left"} flex flex-col`}>
+                              <div className={`max-w-[75%] ${isSelf ? "items-end" : "items-start"} flex flex-col`}>
                                 <div className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}>
                                   <span className="text-[11px] font-medium text-foreground">
                                     {isSelf ? "You" : msg.sender.displayName}
@@ -552,7 +552,7 @@ function ChatRoute() {
                                 </div>
 
                                 <div
-                                  className={`rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap wrap-break-word ${
+                                  className={`rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap wrap-break-word text-left ${
                                     isSelf
                                       ? "bg-primary text-primary-foreground rounded-tr-xs"
                                       : "bg-muted text-foreground rounded-tl-xs"
