@@ -20,6 +20,11 @@ import type {
   ThreadDetail,
   MailExportRequest,
   MailImportResult,
+  ChatSpace,
+  ChatMessage,
+  QuotedMessage,
+  CreateSpaceRequest,
+  ListChatSpacesResponse,
 } from "@mailfast/shared";
 
 /**
@@ -241,6 +246,32 @@ export const api = {
         .slice(0, limit);
     }
   },
+  chatSpaces: (accountId = activeAccountId) =>
+    call<ListChatSpacesResponse>("/chat/spaces", { headers: accountHeaders(accountId) }),
+  createChatSpace: (body: CreateSpaceRequest, accountId = activeAccountId) =>
+    call<ChatSpace>("/chat/spaces", { method: "POST", json: body, headers: accountHeaders(accountId) }),
+  chatMessages: (spaceId: string, accountId = activeAccountId) =>
+    call<{ messages: ChatMessage[] }>(`/chat/messages?spaceId=${encodeURIComponent(spaceId)}`, {
+      headers: accountHeaders(accountId),
+    }),
+  sendChatMessage: (
+    spaceId: string,
+    text: string,
+    threadId?: string,
+    quotedMessage?: QuotedMessage,
+    accountId = activeAccountId,
+  ) =>
+    call<ChatMessage>("/chat/messages", {
+      method: "POST",
+      json: { spaceId, text, threadId, quotedMessage },
+      headers: accountHeaders(accountId),
+    }),
+  markChatSpaceRead: (spaceId: string, accountId = activeAccountId) =>
+    call<{ ok: true }>("/chat/spaces/read", {
+      method: "POST",
+      json: { spaceId },
+      headers: accountHeaders(accountId),
+    }),
   attachmentTicket: (params: { messageId: string; attachmentId: string; filename?: string; mimeType?: string }) =>
     call<{ ticket: string; url: string }>("/attachment-ticket", { json: params }),
 };

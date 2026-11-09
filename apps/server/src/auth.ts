@@ -99,6 +99,10 @@ export class Auth {
     return this.accounts().find((a) => a.accountId === id)?.email ?? null;
   }
 
+  userName(id = this.activeId()): string | null {
+    return this.accounts().find((a) => a.accountId === id)?.name ?? null;
+  }
+
   status(): AuthStatus {
     const activeAccountId = this.activeId();
     const accounts = this.accounts().map((a) => ({

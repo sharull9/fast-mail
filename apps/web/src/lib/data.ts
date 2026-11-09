@@ -397,8 +397,31 @@ function receiveEvent(ev: ServerEvent) {
     }
     void queryClient.invalidateQueries({ queryKey: ["search", id] });
   }
+  if (ev.type === "chat-spaces-changed") {
+    void queryClient.invalidateQueries({ queryKey: ["chat-spaces", id] });
+    return;
+  }
+  if (ev.type === "chat-messages-changed") {
+    void queryClient.invalidateQueries({ queryKey: ["chat-messages", id, ev.spaceId] });
+    void queryClient.invalidateQueries({ queryKey: ["chat-spaces", id] });
+    return;
+  }
   if (ev.type === "labels-changed" && id === getActiveAccountId()) void labelsCollection.utils.refetch();
 }
+
+export const chatSpacesQuery = (accountId = getActiveAccountId()) =>
+  queryOptions({
+    queryKey: ["chat-spaces", accountId],
+    queryFn: () => api.chatSpaces(accountId),
+    refetchInterval: 15_000,
+  });
+
+export const chatMessagesQuery = (spaceId: string, accountId = getActiveAccountId()) =>
+  queryOptions({
+    queryKey: ["chat-messages", accountId, spaceId],
+    queryFn: () => api.chatMessages(spaceId, accountId),
+    refetchInterval: 5_000,
+  });
 
 /** Fetch SSE allows the account header and retains Electron/pairing authentication. */
 export function connectEvents() {

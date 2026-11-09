@@ -23,6 +23,7 @@ import { acquireServerOwnership } from "@/server-ownership.ts";
 import { listThreadsResponse } from "@/threads.ts";
 import { importMail, exportMail } from "@/mail-transfer.ts";
 import { handleSettingsRequest } from "@/settings.ts";
+import { handleChatRequest } from "@/chat.ts";
 
 /**
  * Local HTTP API, launched by Electron as a sidecar (videorc/opencode style):
@@ -411,6 +412,19 @@ try {
           const scopedEvents = new Events(accountId, (event) => events.send(event));
           return (
             (await handleSettingsRequest(req, { store, events: scopedEvents })) ?? json({ error: "Not found" }, 404)
+          );
+        }
+        if (path.startsWith("/api/chat/")) {
+          const accountId = req.headers.get("x-mailfast-account") ?? auth.activeId() ?? "";
+          const scopedEvents = new Events(accountId, (event) => events.send(event));
+          return (
+            (await handleChatRequest(req, {
+              store,
+              events: scopedEvents,
+              token: accountId ? () => auth.token(accountId) : undefined,
+              accountEmail: auth.account(accountId),
+              accountName: auth.userName(accountId) || store.accountSettings().displayName || auth.account(accountId) || "User",
+            })) ?? json({ error: "Not found" }, 404)
           );
         }
 

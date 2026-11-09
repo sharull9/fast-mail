@@ -16,6 +16,8 @@ import type {
   ThreadAction,
   ThreadDateRange,
   ThreadRow,
+  ChatSpace,
+  ChatMessage,
 } from "@mailfast/shared";
 import {
   accountSettingsSchema,
@@ -25,7 +27,7 @@ import {
   NON_PRIMARY_CATEGORY_LABELS,
 } from "@mailfast/shared";
 import * as schema from "./schema.ts";
-import { account, contacts, kv, labels, messages, outbox, threadLabels, threads, user } from "./schema.ts";
+import { account, contacts, kv, labels, messages, outbox, threadLabels, threads, user, chatSpaces, chatMessages } from "./schema.ts";
 
 export * as schema from "./schema.ts";
 /** Better Auth tables keyed by model name, for `drizzleAdapter(db, { schema: authSchema })`. */
@@ -158,7 +160,46 @@ export function openMailStore(opts: OpenOptions) {
     FROM messages
     WHERE from_email != '' AND from_email LIKE '%@%'
     GROUP BY lower(from_email);
+
+    CREATE TABLE IF NOT EXISTS chat_spaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'SPACE',
+      space_uri TEXT,
+      unread_count INTEGER NOT NULL DEFAULT 0,
+      last_message_time INTEGER,
+      last_message_snippet TEXT
+    );
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      space_id TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      sender_display_name TEXT NOT NULL,
+      sender_avatar_url TEXT,
+      sender_email TEXT,
+      create_time INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      formatted_text TEXT,
+      thread_id TEXT,
+      thread_reply_count INTEGER,
+      attachments TEXT,
+      quoted_message TEXT
+    );
+    CREATE INDEX IF NOT EXISTS chat_messages_space_date ON chat_messages (space_id, create_time);
   `);
+
+  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN thread_reply_count INTEGER"); } catch {}
+  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN attachments TEXT"); } catch {}
+  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN quoted_message TEXT"); } catch {}
+  try {
+    sqlite.exec(`
+      INSERT OR IGNORE INTO contacts (email, name, last_seen, count)
+      SELECT lower(sender_email), sender_display_name, max(create_time), count(*)
+      FROM chat_messages
+      WHERE sender_email IS NOT NULL AND sender_email != '' AND sender_email LIKE '%@%'
+      GROUP BY lower(sender_email);
+    `);
+  } catch {}
 
   const upsertContactStmt = sqlite.prepare(`
     INSERT INTO contacts (email, name, last_seen, count)
@@ -680,7 +721,7 @@ export function openMailStore(opts: OpenOptions) {
     },
     searchContacts(query: string, limit = 20): Contact[] {
       const q = query.trim().toLowerCase();
-      return sqlite
+      const rows = sqlite
         .query<Contact, [string, string, string, string, number]>(
           `SELECT COALESCE(manual_name, name) AS name, email FROM contacts
          WHERE hidden = 0 AND (email LIKE ? OR COALESCE(manual_name, name) LIKE ?)
@@ -688,6 +729,224 @@ export function openMailStore(opts: OpenOptions) {
          count DESC, last_seen DESC, email LIMIT ?`,
         )
         .all(`%${q}%`, `%${q}%`, `${q}%`, `${q}%`, limit);
+
+      if (rows.length < limit) {
+        const existingEmails = new Set(rows.map((r) => r.email.toLowerCase()));
+        try {
+          const chatRows = sqlite
+            .query<{ name: string; email: string }, [string, string, number]>(
+              `SELECT sender_display_name AS name, sender_email AS email FROM chat_messages
+               WHERE sender_email IS NOT NULL AND sender_email != '' AND sender_email LIKE '%@%'
+                 AND (lower(sender_email) LIKE ? OR lower(sender_display_name) LIKE ?)
+               GROUP BY lower(sender_email)
+               ORDER BY max(create_time) DESC LIMIT ?`,
+            )
+            .all(`%${q}%`, `%${q}%`, limit - rows.length);
+          for (const c of chatRows) {
+            if (!existingEmails.has(c.email.toLowerCase())) {
+              rows.push({ name: c.name || c.email, email: c.email });
+              existingEmails.add(c.email.toLowerCase());
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      return rows;
+    },
+
+    listChatSpaces(): ChatSpace[] {
+      const rows = db.select().from(chatSpaces).orderBy(desc(chatSpaces.lastMessageTime), asc(chatSpaces.name)).all();
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        spaceUri: r.spaceUri ?? undefined,
+        unreadCount: r.unreadCount,
+        lastMessageTime: r.lastMessageTime ?? undefined,
+        lastMessageSnippet: r.lastMessageSnippet ?? undefined,
+      }));
+    },
+
+    getChatSpace(id: string): ChatSpace | null {
+      const row = db.select().from(chatSpaces).where(eq(chatSpaces.id, id)).get();
+      if (!row) return null;
+      return {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        spaceUri: row.spaceUri ?? undefined,
+        unreadCount: row.unreadCount,
+        lastMessageTime: row.lastMessageTime ?? undefined,
+        lastMessageSnippet: row.lastMessageSnippet ?? undefined,
+      };
+    },
+
+    saveChatSpace(space: ChatSpace): void {
+      db.insert(chatSpaces)
+        .values({
+          id: space.id,
+          name: space.name,
+          type: space.type,
+          spaceUri: space.spaceUri ?? null,
+          unreadCount: space.unreadCount ?? 0,
+          lastMessageTime: space.lastMessageTime ?? null,
+          lastMessageSnippet: space.lastMessageSnippet ?? null,
+        })
+        .onConflictDoUpdate({
+          target: chatSpaces.id,
+          set: {
+            name: space.name,
+            type: space.type,
+            spaceUri: space.spaceUri ?? null,
+            unreadCount: space.unreadCount ?? 0,
+            lastMessageTime: space.lastMessageTime ?? null,
+            lastMessageSnippet: space.lastMessageSnippet ?? null,
+          },
+        })
+        .run();
+    },
+
+    upsertChatSpaces(spacesList: ChatSpace[]): void {
+      for (const space of spacesList) {
+        db.insert(chatSpaces)
+          .values({
+            id: space.id,
+            name: space.name,
+            type: space.type,
+            spaceUri: space.spaceUri ?? null,
+            unreadCount: space.unreadCount ?? 0,
+            lastMessageTime: space.lastMessageTime ?? null,
+            lastMessageSnippet: space.lastMessageSnippet ?? null,
+          })
+          .onConflictDoUpdate({
+            target: chatSpaces.id,
+            set: {
+              name: space.name,
+              type: space.type,
+              spaceUri: space.spaceUri ?? null,
+              lastMessageTime: space.lastMessageTime ?? null,
+              lastMessageSnippet: space.lastMessageSnippet ?? null,
+            },
+          })
+          .run();
+      }
+    },
+
+    deleteChatSpace(spaceId: string): void {
+      db.delete(chatMessages).where(eq(chatMessages.spaceId, spaceId)).run();
+      db.delete(chatSpaces).where(eq(chatSpaces.id, spaceId)).run();
+    },
+
+    markChatSpaceRead(spaceId: string): void {
+      db.update(chatSpaces).set({ unreadCount: 0 }).where(eq(chatSpaces.id, spaceId)).run();
+    },
+
+    listChatMessages(spaceId: string, limit = 100): ChatMessage[] {
+      const rows = db
+        .select()
+        .from(chatMessages)
+        .where(eq(chatMessages.spaceId, spaceId))
+        .orderBy(desc(chatMessages.createTime))
+        .limit(limit)
+        .all();
+      rows.reverse();
+      return rows.map((r) => ({
+        id: r.id,
+        spaceId: r.spaceId,
+        sender: {
+          name: r.senderName,
+          displayName: r.senderDisplayName,
+          avatarUrl: r.senderAvatarUrl ?? undefined,
+          email: r.senderEmail ?? undefined,
+        },
+        createTime: r.createTime,
+        text: r.text,
+        formattedText: r.formattedText ?? undefined,
+        threadId: r.threadId ?? undefined,
+        threadReplyCount: r.threadReplyCount ?? undefined,
+        attachments: r.attachments ?? undefined,
+        quotedMessage: r.quotedMessage ?? undefined,
+      }));
+    },
+
+    saveChatMessage(msg: ChatMessage): void {
+      db.insert(chatMessages)
+        .values({
+          id: msg.id,
+          spaceId: msg.spaceId,
+          senderName: msg.sender.name,
+          senderDisplayName: msg.sender.displayName,
+          senderAvatarUrl: msg.sender.avatarUrl ?? null,
+          senderEmail: msg.sender.email ?? null,
+          createTime: msg.createTime,
+          text: msg.text,
+          formattedText: msg.formattedText ?? null,
+          threadId: msg.threadId ?? null,
+          threadReplyCount: msg.threadReplyCount ?? null,
+          attachments: msg.attachments ?? null,
+          quotedMessage: msg.quotedMessage ?? null,
+        })
+        .onConflictDoUpdate({
+          target: chatMessages.id,
+          set: {
+            text: msg.text,
+            formattedText: msg.formattedText ?? null,
+            threadReplyCount: msg.threadReplyCount ?? null,
+            attachments: msg.attachments ?? null,
+            quotedMessage: msg.quotedMessage ?? null,
+          },
+        })
+        .run();
+
+      db.update(chatSpaces)
+        .set({
+          lastMessageTime: msg.createTime,
+          lastMessageSnippet: msg.text.slice(0, 100),
+        })
+        .where(eq(chatSpaces.id, msg.spaceId))
+        .run();
+
+      if (msg.sender?.email) {
+        recordContact(msg.sender.email, msg.sender.displayName || "", msg.createTime || Date.now());
+      }
+    },
+
+    upsertChatMessages(msgs: ChatMessage[]): void {
+      for (const msg of msgs) {
+        db.insert(chatMessages)
+          .values({
+            id: msg.id,
+            spaceId: msg.spaceId,
+            senderName: msg.sender.name,
+            senderDisplayName: msg.sender.displayName,
+            senderAvatarUrl: msg.sender.avatarUrl ?? null,
+            senderEmail: msg.sender.email ?? null,
+            createTime: msg.createTime,
+            text: msg.text,
+            formattedText: msg.formattedText ?? null,
+            threadId: msg.threadId ?? null,
+            threadReplyCount: msg.threadReplyCount ?? null,
+            attachments: msg.attachments ?? null,
+            quotedMessage: msg.quotedMessage ?? null,
+          })
+          .onConflictDoUpdate({
+            target: chatMessages.id,
+            set: {
+              text: msg.text,
+              formattedText: msg.formattedText ?? null,
+              threadReplyCount: msg.threadReplyCount ?? null,
+              attachments: msg.attachments ?? null,
+              quotedMessage: msg.quotedMessage ?? null,
+            },
+          })
+          .run();
+
+        if (msg.sender?.email) {
+          recordContact(msg.sender.email, msg.sender.displayName || "", msg.createTime || Date.now());
+        }
+      }
     },
 
     close() {
