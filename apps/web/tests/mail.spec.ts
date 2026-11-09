@@ -67,6 +67,12 @@ async function mockMail(
     requests.push(url.pathname);
     let body: unknown;
     switch (url.pathname) {
+      case "/api/chat/spaces":
+        body = { spaces: [] };
+        break;
+      case "/api/avatar":
+        body = { google: null, gravatar: null };
+        break;
       case "/api/connection":
         connectionOrder.push("connection");
         body = {

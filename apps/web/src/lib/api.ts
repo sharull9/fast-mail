@@ -1,5 +1,7 @@
 import { cachedContacts, cacheContacts } from "@/lib/contact-cache";
 import type {
+  AvatarPhotos,
+  AvatarRequest,
   AccountSettings,
   ContactPage,
   SaveContact,
@@ -102,6 +104,12 @@ async function call<T>(path: string, init?: RequestInit & { json?: unknown }): P
 }
 
 export const api = {
+  avatar: (identity: AvatarRequest, accountId = activeAccountId) => {
+    const params = new URLSearchParams();
+    if (identity.email) params.set("email", identity.email);
+    if (identity.googleUserId) params.set("googleUserId", identity.googleUserId);
+    return call<AvatarPhotos>(`/avatar?${params.toString()}`, { headers: accountHeaders(accountId) });
+  },
   accountSettings: (accountId = activeAccountId) =>
     call<AccountSettings>("/settings/account", { headers: accountHeaders(accountId) }),
   saveAccountSettings: (value: AccountSettings, accountId = activeAccountId) =>

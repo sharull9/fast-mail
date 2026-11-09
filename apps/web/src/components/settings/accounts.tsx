@@ -33,7 +33,7 @@ function AccountForm({ account, active }: { account: MailAccount; active: boolea
   return (
     <section className="border-t py-6" aria-label={account.email}>
       <div className="mb-5 flex items-center gap-3">
-        <MailAvatar name={account.name ?? ""} email={account.email} className="size-9" />
+        <MailAvatar name={account.name ?? ""} email={account.email} image={account.image} className="size-9" />
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold">{account.name || account.email}</h3>
           <p className="truncate text-xs text-muted-foreground">

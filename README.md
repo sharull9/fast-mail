@@ -48,8 +48,8 @@ node apps/desktop/node_modules/electron/install.js
 
 Google OAuth client (one-time):
 
-1. In Google Cloud Console, create a project and enable both the **Gmail API** and **Google Chat API**.
-2. Configure the OAuth consent screen. While the app is in "Testing", add your Google account as a test user. Include scopes for Gmail (`gmail.modify`) and Google Chat (`chat.spaces.readonly`, `chat.messages`, `chat.memberships.readonly`).
+1. In Google Cloud Console, create a project and enable the **Gmail API**, **Google Chat API**, and **People API**.
+2. Configure the OAuth consent screen. While the app is in "Testing", add your Google account as a test user. Include scopes for Gmail (`gmail.modify`), Google Chat (`chat.spaces`, `chat.messages`, `chat.memberships.readonly`), and contact photos (`contacts.readonly`). Existing accounts must sign in again to grant contact access. Avatars use available Google profile/contact photos, then Gravatar, then name initials.
 3. Create credentials: **OAuth client ID**, application type **Desktop app**.
 4. Paste the client ID and secret into Mailfast's setup screen. Alternatively, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` before launching.
 

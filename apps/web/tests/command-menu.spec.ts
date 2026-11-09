@@ -19,6 +19,12 @@ async function mockMail(page: Page) {
     const url = new URL(route.request().url());
     let body: unknown;
     switch (url.pathname) {
+      case "/api/chat/spaces":
+        body = { spaces: [] };
+        break;
+      case "/api/avatar":
+        body = { google: null, gravatar: null };
+        break;
       case "/api/connection":
         body = {
           server: {

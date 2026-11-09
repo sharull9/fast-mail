@@ -5,10 +5,11 @@ import type { AuthStatus } from "@mailfast/shared";
 import { Auth, AuthError } from "@/auth.ts";
 import { Events } from "@/events.ts";
 import { Gmail } from "@/gmail.ts";
+import { GooglePhotos } from "@/avatar.ts";
 import { SyncEngine } from "@/sync.ts";
 
 type Engine = Pick<SyncEngine, "start" | "stop" | "wake" | "status" | "ensureLabel" | "ensureThread" | "applyAction">;
-export type AccountRuntime = { store: MailStore; sync: Engine; gmail?: Gmail };
+export type AccountRuntime = { store: MailStore; sync: Engine; gmail?: Gmail; photos: GooglePhotos };
 
 /** Auth owns identities; each runtime owns only one account's rebuildable mailbox. */
 export class Accounts {
@@ -58,7 +59,7 @@ export class Accounts {
       };
       const gmail = new Gmail(scopedAuth);
       const sync = this.createEngine(store, id, events, gmail);
-      this.runtimes.set(id, { store, sync, gmail });
+      this.runtimes.set(id, { store, sync, gmail, photos: new GooglePhotos(scopedAuth.token) });
       sync.start();
     }
   }

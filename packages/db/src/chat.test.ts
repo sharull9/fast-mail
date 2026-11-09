@@ -1,8 +1,40 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, rmdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { openMailStore } from "./index.ts";
 import type { ChatSpace, ChatMessage } from "@mailfast/shared";
 
 describe("chat store", () => {
+  test("upgrades an existing chat database without losing messages or conversations", () => {
+    const directory = mkdtempSync(join(tmpdir(), "mailfast-chat-avatar-"));
+    const path = join(directory, "legacy.sqlite");
+    let store = openMailStore({ path });
+    try {
+      store.saveChatSpace({ id: "spaces/legacy", name: "Legacy", type: "DIRECT_MESSAGE", unreadCount: 1 });
+      store.saveChatMessage({
+        id: "spaces/legacy/messages/1",
+        spaceId: "spaces/legacy",
+        sender: { name: "users/alice", displayName: "Alice" },
+        createTime: 1000,
+        text: "Saved message",
+      });
+      store.sqlite.exec("ALTER TABLE chat_spaces DROP COLUMN avatar_url");
+      store.close();
+      store = openMailStore({ path });
+      expect(store.listChatMessages("spaces/legacy")[0]?.text).toBe("Saved message");
+      const space = store.getChatSpace("spaces/legacy");
+      expect(space?.unreadCount).toBe(1);
+      if (!space) throw new Error("Existing conversation was lost");
+      store.upsertChatSpaces([{ ...space, avatarUrl: "https://photos.example.com/alice" }]);
+      expect(store.getChatSpace(space.id)?.avatarUrl).toBe("https://photos.example.com/alice");
+    } finally {
+      store.close();
+      for (const suffix of ["", "-wal", "-shm"]) rmSync(path + suffix, { force: true });
+      rmdirSync(directory);
+    }
+  });
+
   test("creates, lists, and reads chat spaces", () => {
     const store = openMailStore({ path: ":memory:" });
     expect(store.listChatSpaces()).toEqual([]);
@@ -19,6 +51,7 @@ describe("chat store", () => {
       id: "spaces/space2",
       name: "Alice Smith",
       type: "DIRECT_MESSAGE",
+      avatarUrl: "https://photos.example.com/alice",
       unreadCount: 0,
       lastMessageTime: 2000,
       lastMessageSnippet: "Sounds good!",
@@ -31,6 +64,10 @@ describe("chat store", () => {
     expect(list.length).toBe(2);
     // Ordered by lastMessageTime DESC
     expect(list[0].id).toBe("spaces/space2");
+    expect(list[0].avatarUrl).toBe(space2.avatarUrl);
+    expect(store.getChatSpace(space2.id)?.avatarUrl).toBe(space2.avatarUrl);
+    store.upsertChatSpaces([{ ...space2, avatarUrl: "https://photos.example.com/updated" }]);
+    expect(store.getChatSpace(space2.id)?.avatarUrl).toBe("https://photos.example.com/updated");
     expect(list[1].id).toBe("spaces/space1");
 
     expect(store.getChatSpace("spaces/space1")?.name).toBe("Engineering");

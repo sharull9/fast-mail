@@ -2,7 +2,7 @@ import type { ListThreadsParams, ListThreadsResponse } from "@mailfast/shared";
 import type { AccountRuntime } from "@/accounts.ts";
 
 /** Local reads return immediately; ensureLabel fills missing windows over SSE. */
-export function listThreadsResponse(url: URL, { store, sync }: AccountRuntime): Response {
+export function listThreadsResponse(url: URL, { store, sync }: Pick<AccountRuntime, "store" | "sync">): Response {
   const params: ListThreadsParams = { label: url.searchParams.get("label") ?? "INBOX" };
   for (const name of ["limit", "after", "before"] as const) {
     const value = url.searchParams.get(name);

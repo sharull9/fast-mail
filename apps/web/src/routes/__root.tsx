@@ -68,7 +68,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { MailAccount } from "@mailfast/shared";
 import appCss from "@/styles.css?url";
 
@@ -264,12 +263,8 @@ function AppContent() {
 }
 
 function AccountAvatar({ account }: { account: MailAccount | undefined }) {
-  if (!account?.image) return <MailAvatar name={account?.name ?? ""} email={account?.email ?? ""} className="size-8" />;
   return (
-    <Avatar className="size-8 shrink-0">
-      <AvatarImage src={account.image} alt="" />
-      <AvatarFallback>{(account.name || account.email).slice(0, 2).toUpperCase()}</AvatarFallback>
-    </Avatar>
+    <MailAvatar name={account?.name ?? ""} email={account?.email ?? ""} image={account?.image} className="size-8" />
   );
 }
 
