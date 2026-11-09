@@ -12,7 +12,6 @@ import {
   Hash,
   User,
   Check,
-  AlertTriangle,
 } from "lucide-react";
 import { chatSpacesQuery, chatMessagesQuery, authQuery } from "@/lib/data";
 import { api } from "@/lib/api";
@@ -100,7 +99,6 @@ function ChatRoute() {
 
   const { data: spacesData, isLoading: spacesLoading } = useQuery(chatSpacesQuery());
   const spaces = spacesData?.spaces ?? [];
-  const apiStatus = spacesData?.apiStatus;
 
   const [activeTab, setActiveTab] = useState<"ALL" | "DIRECT_MESSAGE" | "SPACE">("ALL");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -256,30 +254,6 @@ function ChatRoute() {
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
-      {/* Google Cloud Console API Banner if Google Chat API is disabled */}
-      {apiStatus?.disabled && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="size-4 shrink-0 text-amber-400" />
-            <span className="font-semibold text-amber-400">Google Chat API Not Enabled:</span>
-            <span>
-              Google Chat API is not enabled in your Google Cloud Console project. Enable it for live real-time sync with Google servers.
-            </span>
-          </div>
-          {apiStatus.activationUrl && (
-            <a
-              href={apiStatus.activationUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-amber-500/20 px-3 py-1 font-medium text-amber-300 hover:bg-amber-500/30 transition-colors"
-            >
-              <span>Enable in Cloud Console</span>
-              <ExternalLink className="size-3" />
-            </a>
-          )}
-        </div>
-      )}
-
       {/* Main chat two-pane layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: Spaces & Direct Messages List */}
