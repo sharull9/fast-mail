@@ -2,9 +2,11 @@ import type { MailStore } from "@mailfast/db";
 import {
   createSpaceSchema,
   sendChatMessageSchema,
+  type ChatApiStatus,
   type ChatMessage,
   type ChatSpace,
   type CreateSpaceRequest,
+  type ListChatSpacesResponse,
 } from "@mailfast/shared";
 import type { Events } from "@/events.ts";
 
@@ -28,7 +30,8 @@ export class GoogleChatClient {
   async listSpaces(): Promise<ChatSpace[]> {
     const res = await this.fetch("/spaces?pageSize=100");
     if (!res.ok) {
-      throw new Error(`Google Chat API error: ${res.status} ${res.statusText}`);
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Google Chat API error: ${res.status} ${res.statusText} - ${errText}`);
     }
     const data = (await res.json()) as {
       spaces?: Array<{
@@ -40,21 +43,62 @@ export class GoogleChatClient {
         singleUserBotDm?: boolean;
       }>;
     };
-    return (data.spaces ?? []).map((s) => ({
+    const spaces: ChatSpace[] = (data.spaces ?? []).map((s) => ({
       id: s.name,
-      name: s.displayName || (s.spaceType === "DIRECT_MESSAGE" ? "Direct Message" : s.name.replace("spaces/", "Space ")),
-      type: s.spaceType === "DIRECT_MESSAGE" ? "DIRECT_MESSAGE" : s.spaceType === "GROUP_CHAT" ? "GROUP_CHAT" : "SPACE",
+      name:
+        s.displayName ||
+        (s.spaceType === "DIRECT_MESSAGE" ? "Direct Message" : s.name.replace("spaces/", "Space ")),
+      type: (s.spaceType === "DIRECT_MESSAGE"
+        ? "DIRECT_MESSAGE"
+        : s.spaceType === "GROUP_CHAT"
+          ? "GROUP_CHAT"
+          : "SPACE") as ChatSpace["type"],
       singleUserBotDm: s.singleUserBotDm,
       spaceUri: s.spaceUri,
       unreadCount: 0,
     }));
+
+    // For DIRECT_MESSAGE spaces without a displayName, resolve the other member's display name
+    for (const space of spaces) {
+      if (space.type === "DIRECT_MESSAGE" && (!space.name || space.name === "Direct Message")) {
+        try {
+          const membersRes = await this.fetch(`/${space.id}/members?pageSize=10`);
+          if (membersRes.ok) {
+            const mData = (await membersRes.json()) as {
+              memberships?: Array<{
+                member?: {
+                  name?: string;
+                  displayName?: string;
+                  type?: string;
+                  avatarUrl?: string;
+                };
+              }>;
+            };
+            const other = (mData.memberships ?? []).find(
+              (m) => m.member?.type === "HUMAN" || m.member?.displayName,
+            );
+            if (other?.member?.displayName) {
+              space.name = other.member.displayName;
+              if (other.member.avatarUrl) {
+                space.avatarUrl = other.member.avatarUrl;
+              }
+            }
+          }
+        } catch {
+          // ignore member fetch error
+        }
+      }
+    }
+
+    return spaces;
   }
 
   async listMessages(spaceId: string, pageSize = 100): Promise<ChatMessage[]> {
     const cleanSpace = spaceId.startsWith("spaces/") ? spaceId : `spaces/${spaceId}`;
     const res = await this.fetch(`/${cleanSpace}/messages?pageSize=${pageSize}`);
     if (!res.ok) {
-      throw new Error(`Google Chat API error: ${res.status} ${res.statusText}`);
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Google Chat API error: ${res.status} ${res.statusText} - ${errText}`);
     }
     const data = (await res.json()) as {
       messages?: Array<{
@@ -94,7 +138,8 @@ export class GoogleChatClient {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      throw new Error(`Google Chat API error: ${res.status} ${res.statusText}`);
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Google Chat API error: ${res.status} ${res.statusText} - ${errText}`);
     }
     const m = (await res.json()) as {
       name: string;
@@ -130,7 +175,8 @@ export class GoogleChatClient {
       }),
     });
     if (!res.ok) {
-      throw new Error(`Google Chat API error: ${res.status} ${res.statusText}`);
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Google Chat API error: ${res.status} ${res.statusText} - ${errText}`);
     }
     const s = (await res.json()) as {
       name: string;
@@ -158,38 +204,225 @@ export interface ChatRequestContext {
 
 const SEED_SPACE_ID = "spaces/welcome";
 
+const INITIAL_CHAT_SPACES: ChatSpace[] = [
+  {
+    id: "spaces/dm-arafat-ulla",
+    name: "Arafat ulla",
+    type: "DIRECT_MESSAGE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-10-14T10:00:00Z").getTime(),
+    lastMessageSnippet: "https://learnverse-gamified-platform.lovable.app/ https://schoolspark-engin...",
+  },
+  {
+    id: "spaces/space-ainxt-site",
+    name: "ainxt site",
+    type: "SPACE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-04-18T14:30:00Z").getTime(),
+    lastMessageSnippet: "Aryan gilder: okay sir when its done i will send you via email",
+  },
+  {
+    id: "spaces/space-web-dashboard",
+    name: "web dashboard",
+    type: "SPACE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-03-05T09:15:00Z").getTime(),
+    lastMessageSnippet: "hemant agaarwal: yes",
+  },
+  {
+    id: "spaces/dm-hemant-agaarwal",
+    name: "hemant agaarwal",
+    type: "DIRECT_MESSAGE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-02-20T11:45:00Z").getTime(),
+    lastMessageSnippet: "see email by manish",
+  },
+  {
+    id: "spaces/dm-nikhil-thakur",
+    name: "Nikhil Thakur",
+    type: "DIRECT_MESSAGE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-01-22T16:20:00Z").getTime(),
+    lastMessageSnippet: "take pull from there",
+  },
+  {
+    id: "spaces/dm-prakruti-dangi",
+    name: "Prakruti Dangi",
+    type: "DIRECT_MESSAGE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-01-18T13:10:00Z").getTime(),
+    lastMessageSnippet: "You: https://meet.google.com/ndm-mxac-ffj",
+  },
+  {
+    id: "spaces/dm-pulak-jain",
+    name: "pulak jain",
+    type: "DIRECT_MESSAGE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-01-12T15:05:00Z").getTime(),
+    lastMessageSnippet: "sry to abhi woh api ke payload se wo remove kerdoge to wo api work kerne la...",
+  },
+  {
+    id: "spaces/dm-niranjan-kumar",
+    name: "Niranjan Kumar",
+    type: "DIRECT_MESSAGE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2025-01-08T18:40:00Z").getTime(),
+    lastMessageSnippet: "Okay",
+  },
+  {
+    id: "spaces/space-alumniapp-new",
+    name: "alumniapp -new",
+    type: "SPACE",
+    unreadCount: 0,
+    lastMessageTime: new Date("2024-12-10T12:00:00Z").getTime(),
+    lastMessageSnippet: "Discussion for alumniapp release and deployment",
+  },
+];
+
+const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
+  // Arafat ulla
+  {
+    id: "spaces/dm-arafat-ulla/messages/1",
+    spaceId: "spaces/dm-arafat-ulla",
+    sender: { name: "users/arafat-ulla", displayName: "Arafat ulla" },
+    createTime: new Date("2025-10-14T10:00:00Z").getTime(),
+    text: "https://learnverse-gamified-platform.lovable.app/ https://schoolspark-engine.lovable.app/",
+  },
+  // ainxt site
+  {
+    id: "spaces/space-ainxt-site/messages/1",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2024-12-15T10:00:00Z").getTime(),
+    text: "@Kapil Kumar updated the ui in new branch",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/2",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/nikhil-thakur", displayName: "Nikhil Thakur" },
+    createTime: new Date("2024-12-15T10:05:00Z").getTime(),
+    text: "ok",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/3",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2024-12-16T11:20:00Z").getTime(),
+    text: "Working on it",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/4",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/nikhil-thakur", displayName: "Nikhil Thakur" },
+    createTime: new Date("2024-12-16T11:25:00Z").getTime(),
+    text: "ok",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/5",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2025-02-10T14:00:00Z").getTime(),
+    text: "This will be implemented after customer dasboard APIs are stable",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/6",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/nikhil-thakur", displayName: "Nikhil Thakur" },
+    createTime: new Date("2025-02-10T14:02:00Z").getTime(),
+    text: "also reply them on email for this,",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/7",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/aryan-gilder", displayName: "Aryan gilder" },
+    createTime: new Date("2025-04-18T14:30:00Z").getTime(),
+    text: "okay sir when its done i will send you via email",
+  },
+  // web dashboard
+  {
+    id: "spaces/space-web-dashboard/messages/1",
+    spaceId: "spaces/space-web-dashboard",
+    sender: { name: "users/dev-28", displayName: "dev 28" },
+    createTime: new Date("2025-01-20T09:30:00Z").getTime(),
+    text: "ok",
+  },
+  {
+    id: "spaces/space-web-dashboard/messages/2",
+    spaceId: "spaces/space-web-dashboard",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2025-01-20T09:32:00Z").getTime(),
+    text: "Joining",
+  },
+  {
+    id: "spaces/space-web-dashboard/messages/3",
+    spaceId: "spaces/space-web-dashboard",
+    sender: { name: "users/hemant-agaarwal", displayName: "hemant agaarwal" },
+    createTime: new Date("2025-03-05T09:15:00Z").getTime(),
+    text: "yes",
+  },
+  // hemant agaarwal
+  {
+    id: "spaces/dm-hemant-agaarwal/messages/1",
+    spaceId: "spaces/dm-hemant-agaarwal",
+    sender: { name: "users/hemant-agaarwal", displayName: "hemant agaarwal" },
+    createTime: new Date("2025-02-20T11:45:00Z").getTime(),
+    text: "see email by manish",
+  },
+  // Nikhil Thakur
+  {
+    id: "spaces/dm-nikhil-thakur/messages/1",
+    spaceId: "spaces/dm-nikhil-thakur",
+    sender: { name: "users/nikhil-thakur", displayName: "Nikhil Thakur" },
+    createTime: new Date("2025-01-22T16:20:00Z").getTime(),
+    text: "take pull from there",
+  },
+  // Prakruti Dangi
+  {
+    id: "spaces/dm-prakruti-dangi/messages/1",
+    spaceId: "spaces/dm-prakruti-dangi",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2025-01-18T13:10:00Z").getTime(),
+    text: "https://meet.google.com/ndm-mxac-ffj",
+  },
+  // pulak jain
+  {
+    id: "spaces/dm-pulak-jain/messages/1",
+    spaceId: "spaces/dm-pulak-jain",
+    sender: { name: "users/pulak-jain", displayName: "pulak jain" },
+    createTime: new Date("2025-01-12T15:05:00Z").getTime(),
+    text: "sry to abhi woh api ke payload se wo remove kerdoge to wo api work kerne la...",
+  },
+  // Niranjan Kumar
+  {
+    id: "spaces/dm-niranjan-kumar/messages/1",
+    spaceId: "spaces/dm-niranjan-kumar",
+    sender: { name: "users/niranjan-kumar", displayName: "Niranjan Kumar" },
+    createTime: new Date("2025-01-08T18:40:00Z").getTime(),
+    text: "Okay",
+  },
+  // alumniapp -new
+  {
+    id: "spaces/space-alumniapp-new/messages/1",
+    spaceId: "spaces/space-alumniapp-new",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2024-12-10T12:00:00Z").getTime(),
+    text: "Discussion for alumniapp release and deployment",
+  },
+];
+
 function ensureSeedData(store: MailStore, currentUserEmail: string | null) {
   const existing = store.listChatSpaces();
-  if (existing.length === 0) {
-    const welcomeSpace: ChatSpace = {
-      id: SEED_SPACE_ID,
-      name: "Welcome to Google Chat",
-      type: "SPACE",
-      unreadCount: 0,
-      lastMessageTime: Date.now(),
-      lastMessageSnippet: "Welcome to Google Chat in Mailfast!",
-    };
-    store.saveChatSpace(welcomeSpace);
-    store.saveChatMessage({
-      id: `${SEED_SPACE_ID}/messages/welcome-1`,
-      spaceId: SEED_SPACE_ID,
-      sender: {
-        name: "users/mailfast-bot",
-        displayName: "Google Chat Assistant",
-      },
-      createTime: Date.now() - 60_000,
-      text: "Welcome to Google Chat inside Mailfast! You can chat with teammates, organize discussions in Spaces, or send Direct Messages.",
-    });
-    store.saveChatMessage({
-      id: `${SEED_SPACE_ID}/messages/welcome-2`,
-      spaceId: SEED_SPACE_ID,
-      sender: {
-        name: "users/mailfast-bot",
-        displayName: "Google Chat Assistant",
-      },
-      createTime: Date.now(),
-      text: "Type a message below to try sending a message, or click the '+' button to start a new chat.",
-    });
+  const hasOnlyPlaceholder = existing.length === 1 && existing[0]?.id === SEED_SPACE_ID;
+  if (existing.length === 0 || hasOnlyPlaceholder) {
+    if (hasOnlyPlaceholder) {
+      store.deleteChatSpace(SEED_SPACE_ID);
+    }
+    for (const space of INITIAL_CHAT_SPACES) {
+      store.saveChatSpace(space);
+    }
+    for (const msg of INITIAL_CHAT_MESSAGES) {
+      store.saveChatMessage(msg);
+    }
   }
 }
 
@@ -203,6 +436,7 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
 
   // GET /api/chat/spaces
   if (path === "spaces" && req.method === "GET") {
+    let apiStatus: ChatApiStatus = { connected: true };
     if (client) {
       try {
         const liveSpaces = await client.listSpaces();
@@ -210,11 +444,30 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
           ctx.store.upsertChatSpaces(liveSpaces);
         }
       } catch (err) {
-        // Chat API disabled or insufficient scope: gracefully fall back to local store
+        const msg = err instanceof Error ? err.message : String(err);
+        const isServiceDisabled =
+          msg.includes("SERVICE_DISABLED") ||
+          msg.includes("has not been used in project") ||
+          msg.includes("or it is disabled");
+        const activationMatch = msg.match(
+          /https:\/\/console\.developers\.google\.com\/apis\/api\/chat\.googleapis\.com\/overview\?project=\d+/,
+        );
+        apiStatus = {
+          connected: false,
+          disabled: isServiceDisabled,
+          activationUrl: activationMatch
+            ? activationMatch[0]
+            : "https://console.developers.google.com/apis/api/chat.googleapis.com/overview",
+          message: isServiceDisabled
+            ? "Google Chat API is not enabled in your Google Cloud Console project. Enable it to sync live conversations."
+            : msg,
+        };
       }
+    } else {
+      apiStatus = { connected: false, message: "No Google account configured" };
     }
     const spaces = ctx.store.listChatSpaces();
-    return Response.json({ spaces });
+    return Response.json({ spaces, apiStatus } satisfies ListChatSpacesResponse);
   }
 
   // POST /api/chat/spaces
@@ -258,7 +511,7 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
       return Response.json({ error: "spaceId is required" }, { status: 400 });
     }
 
-    if (client && !spaceId.startsWith("spaces/local-") && spaceId !== SEED_SPACE_ID) {
+    if (client && !spaceId.startsWith("spaces/local-") && !spaceId.startsWith("spaces/dm-") && !spaceId.startsWith("spaces/space-")) {
       try {
         const liveMsgs = await client.listMessages(spaceId);
         if (liveMsgs.length > 0) {
@@ -287,7 +540,7 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
     }
 
     let sent: ChatMessage;
-    if (client && !spaceId.startsWith("spaces/local-") && spaceId !== SEED_SPACE_ID) {
+    if (client && !spaceId.startsWith("spaces/local-") && !spaceId.startsWith("spaces/dm-") && !spaceId.startsWith("spaces/space-")) {
       try {
         sent = await client.createMessage(spaceId, parsed.data.text, parsed.data.threadId);
       } catch {

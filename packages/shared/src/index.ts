@@ -339,6 +339,18 @@ export const devicePreferencesSchema = z.object({
 
 // ------------------------------------------------------------------ Google Chat
 
+export interface ChatApiStatus {
+  connected: boolean;
+  disabled?: boolean;
+  activationUrl?: string;
+  message?: string;
+}
+
+export interface ListChatSpacesResponse {
+  spaces: ChatSpace[];
+  apiStatus?: ChatApiStatus;
+}
+
 export interface ChatSpace {
   id: string;
   name: string;
@@ -348,6 +360,7 @@ export interface ChatSpace {
   unreadCount: number;
   lastMessageTime?: number;
   lastMessageSnippet?: string;
+  avatarUrl?: string;
 }
 
 export interface ChatSender {

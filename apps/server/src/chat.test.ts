@@ -21,7 +21,8 @@ describe("chat request handling", () => {
     expect(res?.status).toBe(200);
     const data = (await res?.json()) as { spaces: Array<{ id: string; name: string }> };
     expect(data.spaces.length).toBeGreaterThanOrEqual(1);
-    expect(data.spaces.some((s) => s.id === "spaces/welcome")).toBe(true);
+    expect(data.spaces.some((s) => s.id === "spaces/space-ainxt-site")).toBe(true);
+    expect(data.spaces.some((s) => s.id === "spaces/dm-arafat-ulla")).toBe(true);
 
     store.close();
   });
