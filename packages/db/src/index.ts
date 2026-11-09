@@ -180,10 +180,26 @@ export function openMailStore(opts: OpenOptions) {
       create_time INTEGER NOT NULL,
       text TEXT NOT NULL,
       formatted_text TEXT,
-      thread_id TEXT
+      thread_id TEXT,
+      thread_reply_count INTEGER,
+      attachments TEXT,
+      quoted_message TEXT
     );
     CREATE INDEX IF NOT EXISTS chat_messages_space_date ON chat_messages (space_id, create_time);
   `);
+
+  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN thread_reply_count INTEGER"); } catch {}
+  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN attachments TEXT"); } catch {}
+  try { sqlite.exec("ALTER TABLE chat_messages ADD COLUMN quoted_message TEXT"); } catch {}
+  try {
+    sqlite.exec(`
+      INSERT OR IGNORE INTO contacts (email, name, last_seen, count)
+      SELECT lower(sender_email), sender_display_name, max(create_time), count(*)
+      FROM chat_messages
+      WHERE sender_email IS NOT NULL AND sender_email != '' AND sender_email LIKE '%@%'
+      GROUP BY lower(sender_email);
+    `);
+  } catch {}
 
   const upsertContactStmt = sqlite.prepare(`
     INSERT INTO contacts (email, name, last_seen, count)
@@ -705,7 +721,7 @@ export function openMailStore(opts: OpenOptions) {
     },
     searchContacts(query: string, limit = 20): Contact[] {
       const q = query.trim().toLowerCase();
-      return sqlite
+      const rows = sqlite
         .query<Contact, [string, string, string, string, number]>(
           `SELECT COALESCE(manual_name, name) AS name, email FROM contacts
          WHERE hidden = 0 AND (email LIKE ? OR COALESCE(manual_name, name) LIKE ?)
@@ -713,6 +729,31 @@ export function openMailStore(opts: OpenOptions) {
          count DESC, last_seen DESC, email LIMIT ?`,
         )
         .all(`%${q}%`, `%${q}%`, `${q}%`, `${q}%`, limit);
+
+      if (rows.length < limit) {
+        const existingEmails = new Set(rows.map((r) => r.email.toLowerCase()));
+        try {
+          const chatRows = sqlite
+            .query<{ name: string; email: string }, [string, string, number]>(
+              `SELECT sender_display_name AS name, sender_email AS email FROM chat_messages
+               WHERE sender_email IS NOT NULL AND sender_email != '' AND sender_email LIKE '%@%'
+                 AND (lower(sender_email) LIKE ? OR lower(sender_display_name) LIKE ?)
+               GROUP BY lower(sender_email)
+               ORDER BY max(create_time) DESC LIMIT ?`,
+            )
+            .all(`%${q}%`, `%${q}%`, limit - rows.length);
+          for (const c of chatRows) {
+            if (!existingEmails.has(c.email.toLowerCase())) {
+              rows.push({ name: c.name || c.email, email: c.email });
+              existingEmails.add(c.email.toLowerCase());
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      return rows;
     },
 
     listChatSpaces(): ChatSpace[] {
@@ -824,6 +865,9 @@ export function openMailStore(opts: OpenOptions) {
         text: r.text,
         formattedText: r.formattedText ?? undefined,
         threadId: r.threadId ?? undefined,
+        threadReplyCount: r.threadReplyCount ?? undefined,
+        attachments: r.attachments ?? undefined,
+        quotedMessage: r.quotedMessage ?? undefined,
       }));
     },
 
@@ -840,12 +884,18 @@ export function openMailStore(opts: OpenOptions) {
           text: msg.text,
           formattedText: msg.formattedText ?? null,
           threadId: msg.threadId ?? null,
+          threadReplyCount: msg.threadReplyCount ?? null,
+          attachments: msg.attachments ?? null,
+          quotedMessage: msg.quotedMessage ?? null,
         })
         .onConflictDoUpdate({
           target: chatMessages.id,
           set: {
             text: msg.text,
             formattedText: msg.formattedText ?? null,
+            threadReplyCount: msg.threadReplyCount ?? null,
+            attachments: msg.attachments ?? null,
+            quotedMessage: msg.quotedMessage ?? null,
           },
         })
         .run();
@@ -857,6 +907,10 @@ export function openMailStore(opts: OpenOptions) {
         })
         .where(eq(chatSpaces.id, msg.spaceId))
         .run();
+
+      if (msg.sender?.email) {
+        recordContact(msg.sender.email, msg.sender.displayName || "", msg.createTime || Date.now());
+      }
     },
 
     upsertChatMessages(msgs: ChatMessage[]): void {
@@ -873,15 +927,25 @@ export function openMailStore(opts: OpenOptions) {
             text: msg.text,
             formattedText: msg.formattedText ?? null,
             threadId: msg.threadId ?? null,
+            threadReplyCount: msg.threadReplyCount ?? null,
+            attachments: msg.attachments ?? null,
+            quotedMessage: msg.quotedMessage ?? null,
           })
           .onConflictDoUpdate({
             target: chatMessages.id,
             set: {
               text: msg.text,
               formattedText: msg.formattedText ?? null,
+              threadReplyCount: msg.threadReplyCount ?? null,
+              attachments: msg.attachments ?? null,
+              quotedMessage: msg.quotedMessage ?? null,
             },
           })
           .run();
+
+        if (msg.sender?.email) {
+          recordContact(msg.sender.email, msg.sender.displayName || "", msg.createTime || Date.now());
+        }
       }
     },
 

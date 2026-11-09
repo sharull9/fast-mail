@@ -22,6 +22,7 @@ import type {
   MailImportResult,
   ChatSpace,
   ChatMessage,
+  QuotedMessage,
   CreateSpaceRequest,
   ListChatSpacesResponse,
 } from "@mailfast/shared";
@@ -253,10 +254,16 @@ export const api = {
     call<{ messages: ChatMessage[] }>(`/chat/messages?spaceId=${encodeURIComponent(spaceId)}`, {
       headers: accountHeaders(accountId),
     }),
-  sendChatMessage: (spaceId: string, text: string, threadId?: string, accountId = activeAccountId) =>
+  sendChatMessage: (
+    spaceId: string,
+    text: string,
+    threadId?: string,
+    quotedMessage?: QuotedMessage,
+    accountId = activeAccountId,
+  ) =>
     call<ChatMessage>("/chat/messages", {
       method: "POST",
-      json: { spaceId, text, threadId },
+      json: { spaceId, text, threadId, quotedMessage },
       headers: accountHeaders(accountId),
     }),
   markChatSpaceRead: (spaceId: string, accountId = activeAccountId) =>

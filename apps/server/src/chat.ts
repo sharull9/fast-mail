@@ -174,6 +174,24 @@ export class GoogleChatClient {
         text?: string;
         formattedText?: string;
         thread?: { name: string };
+        attachment?: Array<{
+          name?: string;
+          contentName?: string;
+          contentType?: string;
+          downloadUri?: string;
+          thumbnailUri?: string;
+        }>;
+        quotedMessageMetadata?: {
+          name?: string;
+          quotedMessageSnapshot?: {
+            name?: string;
+            sender?: { name?: string; displayName?: string; avatarUrl?: string; email?: string };
+            createTime?: string;
+            text?: string;
+            formattedText?: string;
+          };
+        };
+        threadReplyCount?: number;
       }>;
     };
     const myNameNorm = (this.myName ?? "").toLowerCase().trim();
@@ -189,6 +207,8 @@ export class GoogleChatClient {
         senderName === "you" ||
         senderName === "me";
 
+      const quoted = m.quotedMessageMetadata?.quotedMessageSnapshot;
+
       return {
         id: m.name,
         spaceId: m.space?.name ?? cleanSpace,
@@ -203,6 +223,22 @@ export class GoogleChatClient {
         text: m.text || m.formattedText || "",
         formattedText: m.formattedText,
         threadId: m.thread?.name,
+        threadReplyCount: m.threadReplyCount,
+        attachments: m.attachment?.map((a) => ({
+          name: a.name,
+          contentName: a.contentName,
+          contentType: a.contentType,
+          downloadUri: a.downloadUri,
+          thumbnailUri: a.thumbnailUri,
+        })),
+        quotedMessage: quoted
+          ? {
+              name: quoted.name,
+              text: quoted.text || quoted.formattedText || "",
+              senderDisplayName: quoted.sender?.displayName,
+              senderAvatarUrl: quoted.sender?.avatarUrl,
+            }
+          : undefined,
       };
     });
 
@@ -370,7 +406,51 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
     id: "spaces/dm-arafat-ulla/messages/1",
     spaceId: "spaces/dm-arafat-ulla",
     sender: { name: "users/arafat-ulla", displayName: "Arafat ulla" },
-    createTime: new Date("2025-10-14T10:00:00Z").getTime(),
+    createTime: new Date("2026-10-06T13:08:00Z").getTime(),
+    text: "@Arafat ulla can we connect",
+  },
+  {
+    id: "spaces/dm-arafat-ulla/messages/2",
+    spaceId: "spaces/dm-arafat-ulla",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2026-10-06T13:08:30Z").getTime(),
+    text: "Yes",
+  },
+  {
+    id: "spaces/dm-arafat-ulla/messages/3",
+    spaceId: "spaces/dm-arafat-ulla",
+    sender: { name: "users/arafat-ulla", displayName: "Arafat ulla" },
+    createTime: new Date("2026-10-06T13:09:00Z").getTime(),
+    text: "https://meet.google.com/upr-avwy-kit",
+  },
+  {
+    id: "spaces/dm-arafat-ulla/messages/4",
+    spaceId: "spaces/dm-arafat-ulla",
+    sender: { name: "users/arafat-ulla", displayName: "Arafat ulla" },
+    createTime: new Date("2026-10-06T13:10:00Z").getTime(),
+    text: "pls join",
+  },
+  {
+    id: "spaces/dm-arafat-ulla/messages/5",
+    spaceId: "spaces/dm-arafat-ulla",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2026-10-06T17:07:00Z").getTime(),
+    text: "",
+    attachments: [
+      {
+        name: "architecture-task-flow.png",
+        contentName: "architecture-task-flow.png",
+        contentType: "image/png",
+        downloadUri: "https://images.unsplash.com/photo-1558655146-d09347e92766?w=800&auto=format&fit=crop&q=80",
+        thumbnailUri: "https://images.unsplash.com/photo-1558655146-d09347e92766?w=800&auto=format&fit=crop&q=80",
+      },
+    ],
+  },
+  {
+    id: "spaces/dm-arafat-ulla/messages/6",
+    spaceId: "spaces/dm-arafat-ulla",
+    sender: { name: "users/arafat-ulla", displayName: "Arafat ulla" },
+    createTime: new Date("2026-10-14T10:00:00Z").getTime(),
     text: "https://learnverse-gamified-platform.lovable.app/ https://schoolspark-engine.lovable.app/",
   },
   // ainxt site
@@ -408,6 +488,8 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
     sender: { name: "users/me", displayName: "You", isSelf: true },
     createTime: new Date("2025-02-10T14:00:00Z").getTime(),
     text: "This will be implemented after customer dasboard APIs are stable",
+    threadId: "spaces/space-ainxt-site/threads/task-thread",
+    threadReplyCount: 1,
   },
   {
     id: "spaces/space-ainxt-site/messages/6",
@@ -415,6 +497,7 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
     sender: { name: "users/nikhil-thakur", displayName: "Nikhil Thakur" },
     createTime: new Date("2025-02-10T14:02:00Z").getTime(),
     text: "also reply them on email for this,",
+    threadId: "spaces/space-ainxt-site/threads/task-thread",
   },
   {
     id: "spaces/space-ainxt-site/messages/7",
@@ -422,6 +505,56 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
     sender: { name: "users/aryan-gilder", displayName: "Aryan gilder" },
     createTime: new Date("2025-04-18T14:30:00Z").getTime(),
     text: "okay sir when its done i will send you via email",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/8",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2026-10-03T19:19:00Z").getTime(),
+    text: "# Construction feedback: slides with both FE and BE\n\nReviewed on 3 October 2026 against the [construction feedbacks deck](https://docs.google.com/presentation/d/1zDTt2dVa8_nyEN2rxuWJRi6eKcsuDTKYHOXqpE2Q1HQ/edit). The current export contains 53 slides. Eight slides contain both FE and BE points: 4, 20, 23, 24, 26, 28, 32, and 34.",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/9",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/nikhil-thakur", displayName: "Nikhil Thakur" },
+    createTime: new Date("2026-10-04T09:11:00Z").getTime(),
+    text: "Please verify the document requirements here: https://docs.google.com/document/d/1HEXjfAgQlyTyOvG5arLBXkJeatUReSaVV_W0wP29PE0/edit",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/10",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2026-10-04T10:15:00Z").getTime(),
+    text: "Financial projections and inventory sheet:\nhttps://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/11",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/krutarth-patel", displayName: "Krutarth Patel" },
+    createTime: new Date("2026-10-04T12:02:00Z").getTime(),
+    text: "@Dnyaneshwar Suwarnkar please update this also",
+    attachments: [
+      {
+        contentName: "accounting-postman_collection.json",
+        contentType: "application/json",
+        downloadUri: "https://example.com/accounting-postman_collection.json",
+        thumbnailUri: "https://example.com/thumbnail-not-image.png",
+      },
+    ],
+  },
+  {
+    id: "spaces/space-ainxt-site/messages/12",
+    spaceId: "spaces/space-ainxt-site",
+    sender: { name: "users/krutarth-patel", displayName: "Krutarth Patel" },
+    createTime: new Date("2026-10-04T15:21:00Z").getTime(),
+    text: "https://docs.google.com/spreadsheets/d/1kJqWa0Wjs0aOiuPQZ0hw8QlpophnqnON57rW21T_u_0/edit?gid=486739760#gid=486739760",
+    attachments: [
+      {
+        contentName: "Onetouch OT Accounting release sheet",
+        contentType: "application/vnd.google-apps.spreadsheet",
+        downloadUri: "https://docs.google.com/spreadsheets/d/1kJqWa0Wjs0aOiuPQZ0hw8QlpophnqnON57rW21T_u_0/edit?gid=486739760#gid=486739760",
+      },
+    ],
   },
   // web dashboard
   {
@@ -448,6 +581,39 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
   // hemant agaarwal
   {
     id: "spaces/dm-hemant-agaarwal/messages/1",
+    spaceId: "spaces/dm-hemant-agaarwal",
+    sender: { name: "users/hemant-agaarwal", displayName: "hemant agaarwal" },
+    createTime: new Date("2025-02-20T11:40:00Z").getTime(),
+    text: "pls share tasks",
+  },
+  {
+    id: "spaces/dm-hemant-agaarwal/messages/2",
+    spaceId: "spaces/dm-hemant-agaarwal",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2025-02-20T11:41:00Z").getTime(),
+    text: "Sharing",
+  },
+  {
+    id: "spaces/dm-hemant-agaarwal/messages/3",
+    spaceId: "spaces/dm-hemant-agaarwal",
+    sender: { name: "users/me", displayName: "You", isSelf: true },
+    createTime: new Date("2025-02-20T11:42:00Z").getTime(),
+    text: "https://github.com/org/repo/pull/42",
+  },
+  {
+    id: "spaces/dm-hemant-agaarwal/messages/4",
+    spaceId: "spaces/dm-hemant-agaarwal",
+    sender: { name: "users/hemant-agaarwal", displayName: "hemant agaarwal" },
+    createTime: new Date("2025-02-20T11:43:00Z").getTime(),
+    text: "Can you share the updated code?",
+    quotedMessage: {
+      name: "spaces/dm-hemant-agaarwal/messages/3",
+      text: "https://github.com/org/repo/pull/42",
+      senderDisplayName: "You",
+    },
+  },
+  {
+    id: "spaces/dm-hemant-agaarwal/messages/5",
     spaceId: "spaces/dm-hemant-agaarwal",
     sender: { name: "users/hemant-agaarwal", displayName: "hemant agaarwal" },
     createTime: new Date("2025-02-20T11:45:00Z").getTime(),
@@ -635,6 +801,9 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
     if (client && !spaceId.startsWith("spaces/local-") && !spaceId.startsWith("spaces/dm-") && !spaceId.startsWith("spaces/space-")) {
       try {
         sent = await client.createMessage(spaceId, parsed.data.text, parsed.data.threadId);
+        if (parsed.data.quotedMessage) {
+          sent.quotedMessage = parsed.data.quotedMessage;
+        }
       } catch {
         sent = {
           id: `${spaceId}/messages/local-${crypto.randomUUID()}`,
@@ -648,6 +817,7 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
           createTime: Date.now(),
           text: parsed.data.text,
           threadId: parsed.data.threadId,
+          quotedMessage: parsed.data.quotedMessage,
         };
       }
     } else {
@@ -663,12 +833,46 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
         createTime: Date.now(),
         text: parsed.data.text,
         threadId: parsed.data.threadId,
+        quotedMessage: parsed.data.quotedMessage,
       };
     }
 
     ctx.store.saveChatMessage(sent);
     ctx.events.send({ type: "chat-messages-changed", spaceId });
     return Response.json(sent);
+  }
+
+  // GET /api/chat/media?url=...
+  if (path === "media" && req.method === "GET") {
+    const mediaUrl = url.searchParams.get("url");
+    if (!mediaUrl) {
+      return Response.json({ error: "url is required" }, { status: 400 });
+    }
+    try {
+      const headers: Record<string, string> = {};
+      if (ctx.token) {
+        try {
+          const token = await ctx.token();
+          headers.Authorization = `Bearer ${token}`;
+        } catch {
+          // continue without auth
+        }
+      }
+      const mediaRes = await fetch(mediaUrl, { headers });
+      if (!mediaRes.ok) {
+        return new Response("Media inaccessible", { status: mediaRes.status });
+      }
+      const contentType = mediaRes.headers.get("content-type") || "image/png";
+      return new Response(mediaRes.body, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400",
+        },
+      });
+    } catch (err) {
+      return new Response(String(err), { status: 500 });
+    }
   }
 
   // POST /api/chat/spaces/read

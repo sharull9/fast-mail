@@ -371,6 +371,21 @@ export interface ChatSender {
   isSelf?: boolean;
 }
 
+export interface ChatAttachment {
+  name?: string;
+  contentName?: string;
+  contentType?: string;
+  downloadUri?: string;
+  thumbnailUri?: string;
+}
+
+export interface QuotedMessage {
+  name?: string;
+  text?: string;
+  senderDisplayName?: string;
+  senderAvatarUrl?: string;
+}
+
 export interface ChatMessage {
   id: string;
   spaceId: string;
@@ -379,11 +394,23 @@ export interface ChatMessage {
   text: string;
   formattedText?: string;
   threadId?: string;
+  threadReplyCount?: number;
+  attachments?: ChatAttachment[];
+  quotedMessage?: QuotedMessage;
 }
 
 export const sendChatMessageSchema = z.object({
   text: z.string().trim().min(1, "Message cannot be empty").max(4000),
   threadId: z.string().optional(),
+  quotedMessageId: z.string().optional(),
+  quotedMessage: z
+    .object({
+      name: z.string().optional(),
+      text: z.string().optional(),
+      senderDisplayName: z.string().optional(),
+      senderAvatarUrl: z.string().optional(),
+    })
+    .optional(),
 });
 export type SendChatMessageRequest = z.infer<typeof sendChatMessageSchema>;
 

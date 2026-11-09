@@ -548,6 +548,7 @@ export function ComposerPanel({
           label="To"
           recipients={draft.to}
           onChange={(to) => updateDraft({ to })}
+          allRecipients={[...draft.to, ...draft.cc, ...draft.bcc]}
           showCcToggle={!showCc}
           showBccToggle={!showBcc}
           onToggleCc={() => setShowCc(true)}
@@ -560,6 +561,7 @@ export function ComposerPanel({
             label="Cc"
             recipients={draft.cc}
             onChange={(cc) => updateDraft({ cc })}
+            allRecipients={[...draft.to, ...draft.cc, ...draft.bcc]}
             placeholder="Add Cc..."
           />
         )}
@@ -569,6 +571,7 @@ export function ComposerPanel({
             label="Bcc"
             recipients={draft.bcc}
             onChange={(bcc) => updateDraft({ bcc })}
+            allRecipients={[...draft.to, ...draft.cc, ...draft.bcc]}
             placeholder="Add Bcc..."
           />
         )}
