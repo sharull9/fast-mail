@@ -248,6 +248,8 @@ export const api = {
   },
   chatSpaces: (accountId = activeAccountId) =>
     call<ListChatSpacesResponse>("/chat/spaces", { headers: accountHeaders(accountId) }),
+  createMeetLink: (accountId = activeAccountId) =>
+    call<{ meetingUri: string }>("/chat/meet", { method: "POST", headers: accountHeaders(accountId) }),
   createChatSpace: (body: CreateSpaceRequest, accountId = activeAccountId) =>
     call<ChatSpace>("/chat/spaces", { method: "POST", json: body, headers: accountHeaders(accountId) }),
   chatMessages: (spaceId: string, accountId = activeAccountId) =>

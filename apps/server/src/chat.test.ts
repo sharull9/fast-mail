@@ -1,10 +1,113 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { openMailStore } from "@mailfast/db";
-import { Events } from "./events.ts";
-import { handleChatRequest } from "./chat.ts";
+import { Events } from "@/events.ts";
+import { GoogleChatClient, handleChatRequest } from "@/chat.ts";
 import type { ServerEvent } from "@mailfast/shared";
 
 describe("chat request handling", () => {
+  test.each(["DIRECT_MESSAGE", "GROUP_CHAT"] as const)("rejects thread replies in %s conversations", async (type) => {
+    const store = openMailStore({ path: ":memory:" });
+    const emitted: ServerEvent[] = [];
+    const events = new Events("test-account", (event) => emitted.push(event));
+    store.saveChatSpace({ id: "spaces/test", name: "Conversation", type, unreadCount: 0 });
+    try {
+      const response = await handleChatRequest(
+        new Request("http://localhost/api/chat/messages", {
+          method: "POST",
+          body: JSON.stringify({ spaceId: "spaces/test", text: "Reply", threadId: "spaces/test/threads/root" }),
+        }),
+        { store, events },
+      );
+      expect(response?.status).toBe(400);
+      expect(await response?.json()).toEqual({ error: "Thread replies are only available in spaces." });
+      expect(store.listChatMessages("spaces/test")).toEqual([]);
+      expect(emitted).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
+
+  test("allows a thread reply in a space", async () => {
+    const store = openMailStore({ path: ":memory:" });
+    store.saveChatSpace({ id: "spaces/test", name: "Team", type: "SPACE", unreadCount: 0 });
+    try {
+      const response = await handleChatRequest(
+        new Request("http://localhost/api/chat/messages", {
+          method: "POST",
+          body: JSON.stringify({ spaceId: "spaces/test", text: "Reply", threadId: "spaces/test/threads/root" }),
+        }),
+        { store, events: new Events() },
+      );
+      expect(response?.status).toBe(200);
+      expect(store.listChatMessages("spaces/test")[0]?.threadId).toBe("spaces/test/threads/root");
+    } finally {
+      store.close();
+    }
+  });
+
+  test("creates a real Meet link using the Google account token", async () => {
+    const store = openMailStore({ path: ":memory:" });
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        meetingUri: "https://meet.google.com/abc-defg-hij",
+      }),
+    );
+    try {
+      const response = await handleChatRequest(new Request("http://localhost/api/chat/meet", { method: "POST" }), {
+        store,
+        events: new Events(),
+        token: async () => "google-token",
+      });
+      expect(response?.status).toBe(200);
+      expect(await response?.json()).toEqual({ meetingUri: "https://meet.google.com/abc-defg-hij" });
+      expect(fetchMock).toHaveBeenCalledWith("https://meet.googleapis.com/v2/spaces", {
+        method: "POST",
+        headers: { Authorization: "Bearer google-token", "Content-Type": "application/json" },
+        body: "{}",
+      });
+      expect(store.listChatSpaces()).toEqual([]);
+    } finally {
+      fetchMock.mockRestore();
+      store.close();
+    }
+  });
+
+  test.each([
+    { status: 403, body: {}, message: "reconnecting" },
+    { status: 500, body: {}, message: "Try again" },
+    { status: 200, body: { meetingUri: "https://example.com/fake" }, message: "valid meeting link" },
+    { status: 200, body: {}, message: "valid meeting link" },
+  ])("reports Meet failures without inventing a link: %j", async ({ status, body, message }) => {
+    const store = openMailStore({ path: ":memory:" });
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json(body, { status }));
+    try {
+      const response = await handleChatRequest(new Request("http://localhost/api/chat/meet", { method: "POST" }), {
+        store,
+        events: new Events(),
+        token: async () => "google-token",
+      });
+      expect(response?.status).toBe(502);
+      expect(await response?.text()).toContain(message);
+    } finally {
+      fetchMock.mockRestore();
+      store.close();
+    }
+  });
+
+  test("requires a connected Google account to create a Meet link", async () => {
+    const store = openMailStore({ path: ":memory:" });
+    try {
+      const response = await handleChatRequest(new Request("http://localhost/api/chat/meet", { method: "POST" }), {
+        store,
+        events: new Events(),
+      });
+      expect(response?.status).toBe(409);
+      expect(await response?.text()).toContain("Connect a Google account");
+    } finally {
+      store.close();
+    }
+  });
+
   test("lists spaces including seeded welcome space", async () => {
     const store = openMailStore({ path: ":memory:" });
     const events = new Events();
@@ -142,7 +245,7 @@ describe("chat request handling", () => {
     const originalFetch = globalThis.fetch;
     try {
       globalThis.fetch = (async (url: string | URL | Request) => {
-        const u = url.toString();
+        const u = url instanceof Request ? url.url : url.toString();
         if (u.includes("/spaces?pageSize=100")) {
           return new Response(
             JSON.stringify({
@@ -204,12 +307,7 @@ describe("chat request handling", () => {
         return new Response("{}", { status: 200 });
       }) as typeof fetch;
 
-      const { GoogleChatClient } = await import("./chat.ts");
-      const client = new GoogleChatClient(
-        async () => "fake-token",
-        "Arafat ulla",
-        "arafat@infoware.ws",
-      );
+      const client = new GoogleChatClient(async () => "fake-token", "Arafat ulla", "arafat@infoware.ws");
 
       const spaces = await client.listSpaces();
       expect(spaces.length).toBe(2);
@@ -228,7 +326,7 @@ describe("chat request handling", () => {
   test("GoogleChatClient flags isSelf on messages matching user", async () => {
     const originalFetch = globalThis.fetch;
     try {
-      globalThis.fetch = (async (url: string | URL | Request) => {
+      globalThis.fetch = (async (_url: string | URL | Request) => {
         return new Response(
           JSON.stringify({
             messages: [
@@ -250,12 +348,7 @@ describe("chat request handling", () => {
         );
       }) as typeof fetch;
 
-      const { GoogleChatClient } = await import("./chat.ts");
-      const client = new GoogleChatClient(
-        async () => "fake-token",
-        "Arafat ulla",
-        "arafat@infoware.ws",
-      );
+      const client = new GoogleChatClient(async () => "fake-token", "Arafat ulla", "arafat@infoware.ws");
 
       const msgs = await client.listMessages("spaces/dm123");
       expect(msgs.length).toBe(2);
@@ -268,4 +361,3 @@ describe("chat request handling", () => {
     }
   });
 });
-
