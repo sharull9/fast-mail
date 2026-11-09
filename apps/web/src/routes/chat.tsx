@@ -13,7 +13,6 @@ import {
   User,
   Check,
   Quote,
-  CornerDownRight,
   Video,
   Mail,
   Calendar,
@@ -30,7 +29,6 @@ import {
   Copy,
   FileCode,
   FolderArchive,
-  Download,
 } from "lucide-react";
 import { chatSpacesQuery, chatMessagesQuery, authQuery } from "@/lib/data";
 import { api } from "@/lib/api";
@@ -130,18 +128,18 @@ function MentionChip({
         <button
           type="button"
           className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-semibold cursor-pointer transition-colors ${
-            isSelf
-              ? "bg-white/25 text-white hover:bg-white/35"
-              : "bg-primary/15 text-primary hover:bg-primary/25"
+            isSelf ? "bg-white/25 text-white hover:bg-white/35" : "bg-primary/15 text-primary hover:bg-primary/25"
           }`}
         >
           <span>@{cleanName}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 overflow-hidden shadow-xl border border-border" align="start">
-        <div className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 pb-3 border-b border-border/50">
+        <div className="bg-linear-to-br from-primary/15 via-primary/5 to-transparent p-4 pb-3 border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className={`flex size-12 items-center justify-center rounded-full text-sm font-semibold border-2 border-background shadow-xs ${avatarStyle}`}>
+            <div
+              className={`flex size-12 items-center justify-center rounded-full text-sm font-semibold border-2 border-background shadow-xs ${avatarStyle}`}
+            >
               {cleanName.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -367,7 +365,10 @@ function detectGoogleServices(
     if (attachments) {
       matchedIdx = attachments.findIndex((att) => {
         if (!att.downloadUri && !att.contentName) return false;
-        if (att.downloadUri && (att.downloadUri === url || url.includes(att.downloadUri) || att.downloadUri.includes(url))) {
+        if (
+          att.downloadUri &&
+          (att.downloadUri === url || url.includes(att.downloadUri) || att.downloadUri.includes(url))
+        ) {
           return true;
         }
         const idMatch = url.match(/\/(?:d|spreadsheets\/d|document\/d|presentation\/d|forms\/d)\/([a-zA-Z0-9_-]+)/);
@@ -411,7 +412,8 @@ function detectGoogleServices(
       if (consumedAttachments.has(idx)) return;
       if (
         att.contentType?.startsWith("application/vnd.google-apps") ||
-        (att.downloadUri && (att.downloadUri.includes("docs.google.com") || att.downloadUri.includes("drive.google.com")))
+        (att.downloadUri &&
+          (att.downloadUri.includes("docs.google.com") || att.downloadUri.includes("drive.google.com")))
       ) {
         const url = att.downloadUri || "";
         if (url && !seenUrls.has(url)) {
@@ -502,7 +504,15 @@ function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
       >
         <div className="bg-[#FBBC04] px-6 py-5 flex items-center justify-center relative select-none">
           <div className="flex items-center gap-4 text-amber-950">
-            <svg className="size-12 drop-shadow-xs" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="size-12 drop-shadow-xs"
+              viewBox="0 0 64 64"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M16 24h24v16a12 12 0 0 1-24 0V24z" fill="#FFF9C4" />
               <path d="M40 28h6a4 4 0 0 1 0 8h-6" />
               <path d="M22 16c0-2 2-3 2-5" />
@@ -574,21 +584,19 @@ function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
       className="overflow-hidden rounded-xl border border-border/80 bg-card hover:bg-muted/50 p-3 max-w-sm shadow-xs cursor-pointer group transition-all hover:scale-[1.01]"
     >
       <div className="flex items-start gap-3">
-        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${brand.bg} ${brand.text} border ${brand.border} shadow-xs`}>
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${brand.bg} ${brand.text} border ${brand.border} shadow-xs`}
+        >
           {brand.icon}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${brand.text}`}>
-              {service.badge}
-            </span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${brand.text}`}>{service.badge}</span>
           </div>
           <div className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
             {service.title}
           </div>
-          <div className="truncate text-[10px] text-muted-foreground mt-0.5">
-            {service.domain}
-          </div>
+          <div className="truncate text-[10px] text-muted-foreground mt-0.5">{service.domain}</div>
         </div>
         <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0 mt-0.5" />
       </div>
@@ -738,14 +746,7 @@ function RenderMessageText({
 
     return tokens.map((token, idx) => {
       if (token.startsWith("@") && token.length > 2) {
-        return (
-          <MentionChip
-            key={idx}
-            name={token}
-            isSelf={isSelf}
-            onOpenDm={onOpenDm}
-          />
-        );
+        return <MentionChip key={idx} name={token} isSelf={isSelf} onOpenDm={onOpenDm} />;
       }
       const mdLinkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
       if (mdLinkMatch) {
@@ -784,7 +785,7 @@ function RenderMessageText({
 
   return (
     <div className="space-y-2">
-      <div className="whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
+      <div className="whitespace-pre-wrap break-all wrap-anywhere">
         {lines.map((line, lineIdx) => {
           const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
           if (headingMatch) {
@@ -794,11 +795,7 @@ function RenderMessageText({
               </div>
             );
           }
-          return (
-            <div key={lineIdx}>
-              {renderRichText(line)}
-            </div>
-          );
+          return <div key={lineIdx}>{renderRichText(line)}</div>;
         })}
       </div>
 
@@ -836,9 +833,9 @@ function RenderAttachments({
           (att.contentType?.startsWith("image/") ||
             att.contentName?.match(/\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i) ||
             att.downloadUri?.startsWith("data:image/")) &&
-            !att.contentName?.match(
-              /\.(json|ts|tsx|js|jsx|pdf|zip|rar|tar|gz|7z|csv|xlsx?|docx?|pptx?|txt|md|html?|css|sh|py)$/i,
-            ),
+          !att.contentName?.match(
+            /\.(json|ts|tsx|js|jsx|pdf|zip|rar|tar|gz|7z|csv|xlsx?|docx?|pptx?|txt|md|html?|css|sh|py)$/i,
+          ),
         );
 
         const mediaSrc = att.downloadUri?.startsWith("data:")
@@ -896,9 +893,7 @@ function RenderAttachments({
               <div className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
                 {att.contentName || "File attachment"}
               </div>
-              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                {att.contentType || "Attachment"}
-              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{att.contentType || "Attachment"}</div>
             </div>
             <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-colors" />
           </div>
@@ -939,6 +934,10 @@ function ChatRoute() {
   }, [spaces, selectedSpaceId]);
 
   const activeSpaceId = activeSpace?.id;
+  const canReplyInThread = activeSpace?.type === "SPACE";
+  const composerScope = JSON.stringify([auth?.activeAccountId ?? null, activeSpaceId]);
+  const composerScopeRef = useRef(composerScope);
+  composerScopeRef.current = composerScope;
 
   // Mark space read on open
   useEffect(() => {
@@ -1012,11 +1011,7 @@ function ChatRoute() {
     }
     if (!el) {
       const found = messages.find(
-        (m) =>
-          m.id === targetNameOrId ||
-          m.name === targetNameOrId ||
-          (m.name && targetNameOrId && m.name.endsWith(targetNameOrId)) ||
-          (m.id && targetNameOrId && targetNameOrId.endsWith(m.id)),
+        (m) => m.id === targetNameOrId || (m.id && targetNameOrId && targetNameOrId.endsWith(m.id)),
       );
       if (found) {
         el = document.getElementById(`chat-msg-${found.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
@@ -1057,6 +1052,42 @@ function ChatRoute() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
+  const [slashCommand, setSlashCommand] = useState<{ start: number; end: number; query: string } | null>(null);
+  const showSlashMenu = slashCommand !== null && "meet send a meet link google meet".includes(slashCommand.query);
+  const meetMutation = useMutation({
+    mutationFn: (input: { accountId: string | null; scope: string; draft: string; start: number; end: number }) =>
+      api.createMeetLink(input.accountId),
+    onSuccess: ({ meetingUri }, input) => {
+      if (composerScopeRef.current !== input.scope) return;
+      setMessageText(`${input.draft.slice(0, input.start)}${meetingUri} ${input.draft.slice(input.end)}`);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    onError: (_error, input) => {
+      if (composerScopeRef.current === input.scope) requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+  });
+
+  useEffect(() => {
+    setThreadParent(null);
+    setThreadReplyText("");
+    setReplyingTo(null);
+    setMessageText("");
+    setShowMentionMenu(false);
+    setSlashCommand(null);
+  }, [composerScope]);
+
+  const handleSelectMeet = () => {
+    if (!slashCommand || meetMutation.isPending) return;
+    setSlashCommand(null);
+    setShowMentionMenu(false);
+    meetMutation.mutate({
+      accountId: auth?.activeAccountId ?? null,
+      scope: composerScope,
+      draft: messageText,
+      start: slashCommand.start,
+      end: slashCommand.end,
+    });
+  };
 
   // Candidates for mentions
   const mentionCandidates = useMemo(() => {
@@ -1078,16 +1109,15 @@ function ChatRoute() {
     }
     if (!map.has("arafat ulla")) map.set("arafat ulla", { displayName: "Arafat ulla", email: "arafat@info.com" });
     if (!map.has("kapil kumar")) map.set("kapil kumar", { displayName: "Kapil Kumar", email: "kapil@info.com" });
-    if (!map.has("hemant agaarwal")) map.set("hemant agaarwal", { displayName: "hemant agaarwal", email: "hemant@info.com" });
+    if (!map.has("hemant agaarwal"))
+      map.set("hemant agaarwal", { displayName: "hemant agaarwal", email: "hemant@info.com" });
     if (!map.has("nikhil thakur")) map.set("nikhil thakur", { displayName: "Nikhil Thakur", email: "nikhil@info.com" });
     return Array.from(map.values());
   }, [messages, spaces]);
 
   const filteredMentionCandidates = useMemo(() => {
     if (!mentionFilter) return mentionCandidates.slice(0, 6);
-    return mentionCandidates
-      .filter((c) => c.displayName.toLowerCase().includes(mentionFilter))
-      .slice(0, 6);
+    return mentionCandidates.filter((c) => c.displayName.toLowerCase().includes(mentionFilter)).slice(0, 6);
   }, [mentionCandidates, mentionFilter]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1096,6 +1126,16 @@ function ChatRoute() {
 
     const cursorPos = e.target.selectionStart ?? val.length;
     const textBeforeCursor = val.slice(0, cursorPos);
+    const slashMatch = textBeforeCursor.match(/(?:^|\s)\/([a-z]*)$/i);
+    setSlashCommand(
+      slashMatch
+        ? {
+            start: cursorPos - slashMatch[1]!.length - 1,
+            end: cursorPos,
+            query: slashMatch[1]!.toLowerCase(),
+          }
+        : null,
+    );
     const match = textBeforeCursor.match(/@([a-zA-Z0-9_\s]*)$/);
     if (match) {
       setShowMentionMenu(true);
@@ -1112,6 +1152,7 @@ function ChatRoute() {
     const newTextBefore = textBeforeCursor.replace(/@([a-zA-Z0-9_\s]*)$/, `@${member.displayName} `);
     setMessageText(newTextBefore + textAfterCursor);
     setShowMentionMenu(false);
+    setSlashCommand(null);
     textareaRef.current?.focus();
   };
 
@@ -1164,6 +1205,11 @@ function ChatRoute() {
 
   const handleSendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (meetMutation.isPending) return;
+    if (showSlashMenu) {
+      handleSelectMeet();
+      return;
+    }
     const text = messageText.trim();
     if (!text || sendMutation.isPending) return;
     const quote = replyingTo
@@ -1176,19 +1222,45 @@ function ChatRoute() {
       : undefined;
     setMessageText("");
     setReplyingTo(null);
+    setShowMentionMenu(false);
+    setSlashCommand(null);
     sendMutation.mutate({ text, quotedMessage: quote });
   };
 
   const handleSendThreadReply = (e?: React.FormEvent) => {
     e?.preventDefault();
     const text = threadReplyText.trim();
-    if (!text || !threadParent || sendMutation.isPending) return;
+    if (
+      !canReplyInThread ||
+      text.length === 0 ||
+      !threadParent ||
+      threadParent.spaceId !== activeSpaceId ||
+      sendMutation.isPending
+    )
+      return;
     const threadId = threadParent.threadId || threadParent.id;
     setThreadReplyText("");
     sendMutation.mutate({ text, threadId });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (showSlashMenu) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashCommand(null);
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        handleSelectMeet();
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -1198,9 +1270,7 @@ function ChatRoute() {
   const threadReplies = useMemo(() => {
     if (!threadParent) return [];
     const tId = threadParent.threadId || threadParent.id;
-    return messages.filter(
-      (m) => m.id !== threadParent.id && (m.threadId === tId || m.threadId === threadParent.id),
-    );
+    return messages.filter((m) => m.id !== threadParent.id && (m.threadId === tId || m.threadId === threadParent.id));
   }, [messages, threadParent]);
 
   // Contacts search for new DM
@@ -1341,7 +1411,9 @@ function ChatRoute() {
                   type="button"
                   onClick={() => setActiveTab("DIRECT_MESSAGE")}
                   className={`rounded-md px-2 py-1 font-medium transition-colors ${
-                    activeTab === "DIRECT_MESSAGE" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                    activeTab === "DIRECT_MESSAGE"
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Direct messages
@@ -1369,9 +1441,7 @@ function ChatRoute() {
                 title="Filter unread conversations"
               >
                 <span>Unread</span>
-                <span
-                  className={`size-2 rounded-full ${unreadOnly ? "bg-primary" : "bg-muted-foreground/40"}`}
-                />
+                <span className={`size-2 rounded-full ${unreadOnly ? "bg-primary" : "bg-muted-foreground/40"}`} />
               </button>
             </div>
           </div>
@@ -1527,36 +1597,36 @@ function ChatRoute() {
                           const sanitizedId = msg.id.replace(/[^a-zA-Z0-9_-]/g, "_");
                           const isHighlighted =
                             highlightedMsgId === msg.id ||
-                            highlightedMsgId === msg.name ||
-                            (highlightedMsgId && (highlightedMsgId.endsWith(msg.id) || msg.id.endsWith(highlightedMsgId)));
+                            (highlightedMsgId &&
+                              (highlightedMsgId.endsWith(msg.id) || msg.id.endsWith(highlightedMsgId)));
 
                           const googleServiceResult = detectGoogleServices(msg.text || "", msg.attachments);
 
                           const dynamicReplyCount = Math.max(
                             msg.threadReplyCount || 0,
-                            threadReplyCounts.get(msg.id) ||
-                              (msg.threadId ? threadReplyCounts.get(msg.threadId) || 0 : 0),
+                            threadReplyCounts.get(msg.id) || 0,
+                            msg.threadId ? (threadReplyCounts.get(msg.threadId) || 0) - 1 : 0,
                           );
                           const hasActiveThread =
                             threadParent?.id === msg.id ||
                             (threadParent &&
                               Boolean(
                                 (threadParent.threadId && threadParent.threadId === msg.id) ||
-                                  (msg.threadId && threadParent.id === msg.threadId),
+                                (msg.threadId && threadParent.id === msg.threadId),
                               ));
 
                           return (
                             <div
                               key={msg.id}
                               id={`chat-msg-${sanitizedId}`}
-                              className={`group relative flex items-start gap-3 w-full min-w-0 transition-all duration-300 rounded-xl p-1 ${
-                                isHighlighted ? "bg-primary/15 ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+                              className={`group/message relative flex items-start gap-3 w-full min-w-0 transition-all duration-300 rounded-xl p-1 ${
+                                isHighlighted
+                                  ? "bg-primary/15 ring-2 ring-primary ring-offset-2 ring-offset-background"
+                                  : ""
                               } ${isSelf ? "flex-row-reverse" : "flex-row"}`}
                             >
                               <Avatar className="size-8 shrink-0 mt-0.5">
-                                {msg.sender.avatarUrl ? (
-                                   <AvatarImage src={msg.sender.avatarUrl} alt="" />
-                                ) : null}
+                                {msg.sender.avatarUrl ? <AvatarImage src={msg.sender.avatarUrl} alt="" /> : null}
                                 <AvatarFallback
                                   className={`text-[11px] font-medium ${
                                     isSelf ? "bg-primary/20 text-primary" : "bg-muted text-foreground"
@@ -1566,8 +1636,12 @@ function ChatRoute() {
                                 </AvatarFallback>
                               </Avatar>
 
-                              <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[65%] min-w-0 flex flex-col ${isSelf ? "items-end ml-auto" : "items-start mr-auto"}`}>
-                                <div className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}>
+                              <div
+                                className={`max-w-[85%] sm:max-w-[75%] md:max-w-[65%] min-w-0 flex flex-col ${isSelf ? "items-end ml-auto" : "items-start mr-auto"}`}
+                              >
+                                <div
+                                  className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+                                >
                                   <span className="text-[11px] font-medium text-foreground">
                                     {isSelf ? "You" : msg.sender.displayName}
                                   </span>
@@ -1578,7 +1652,7 @@ function ChatRoute() {
 
                                 {/* Message Bubble: shrink-to-fit width, word break all to avoid clipping */}
                                 <div
-                                  className={`w-fit max-w-full rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-all [overflow-wrap:anywhere] text-left select-text relative shadow-xs ${
+                                  className={`w-fit max-w-full rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-all wrap-anywhere text-left select-text relative shadow-xs ${
                                     isSelf
                                       ? "bg-primary text-primary-foreground rounded-tr-xs"
                                       : "bg-muted text-foreground rounded-tl-xs"
@@ -1643,7 +1717,7 @@ function ChatRoute() {
                                 </div>
 
                                 {/* Thread indicator button */}
-                                {dynamicReplyCount > 0 && (
+                                {canReplyInThread && dynamicReplyCount > 0 && (
                                   <button
                                     type="button"
                                     onClick={() => setThreadParent(msg)}
@@ -1655,15 +1729,17 @@ function ChatRoute() {
                                     title="View thread replies"
                                   >
                                     <MessageSquareText className="size-3" />
-                                    <span>{dynamicReplyCount} {dynamicReplyCount === 1 ? "reply" : "replies"}</span>
+                                    <span>
+                                      {dynamicReplyCount} {dynamicReplyCount === 1 ? "reply" : "replies"}
+                                    </span>
                                   </button>
                                 )}
                               </div>
 
                               {/* Hover Action Toolbar */}
                               <div
-                                className={`opacity-0 group-hover:opacity-100 transition-opacity absolute top-0 ${
-                                  isSelf ? "left-0 -translate-x-full pr-2" : "right-0 translate-x-full pl-2"
+                                className={`pointer-events-none opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100 transition-opacity absolute -top-6 ${
+                                  isSelf ? "right-11" : "left-11"
                                 } flex items-center gap-1 z-10`}
                               >
                                 <div className="flex items-center gap-0.5 rounded-full border border-border bg-background/95 backdrop-blur-xs px-1.5 py-0.5 shadow-md">
@@ -1687,16 +1763,20 @@ function ChatRoute() {
                                   >
                                     <Quote className="size-3.5" />
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setThreadParent(msg)}
-                                    className={`p-1 hover:bg-muted rounded-full transition-colors ${
-                                      hasActiveThread ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
-                                    }`}
-                                    title="Reply in thread"
-                                  >
-                                    <MessageSquareText className="size-3.5" />
-                                  </button>
+                                  {canReplyInThread && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setThreadParent(msg)}
+                                      className={`p-1 hover:bg-muted rounded-full transition-colors ${
+                                        hasActiveThread
+                                          ? "text-primary bg-primary/10"
+                                          : "text-muted-foreground hover:text-foreground"
+                                      }`}
+                                      title="Reply in thread"
+                                    >
+                                      <MessageSquareText className="size-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1711,6 +1791,34 @@ function ChatRoute() {
 
               {/* Message composer input */}
               <div className="border-t border-border p-4 bg-background relative">
+                {showSlashMenu && (
+                  <div
+                    id="chat-slash-commands"
+                    role="listbox"
+                    aria-label="Chat commands"
+                    className="absolute bottom-full left-4 right-4 z-50 mb-2 max-w-sm rounded-2xl bg-popover p-1.5 text-popover-foreground shadow-lg"
+                  >
+                    <button
+                      id="chat-meet-command"
+                      type="button"
+                      role="option"
+                      aria-selected="true"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleSelectMeet}
+                      className="flex w-full items-center gap-3 rounded-xl bg-muted px-3 py-2.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Video className="size-5 shrink-0 text-amber-500" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">Send a Meet link</span>
+                        <span className="block text-xs text-muted-foreground">
+                          Google Meet · Create a new meeting link
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted-foreground">/meet</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Mention Autocomplete Menu */}
                 {showMentionMenu && filteredMentionCandidates.length > 0 && (
                   <div className="absolute bottom-full left-4 mb-2 w-64 rounded-xl border border-border bg-popover p-1 shadow-lg z-50 animate-in fade-in-0 zoom-in-95">
@@ -1722,10 +1830,13 @@ function ChatRoute() {
                         <button
                           key={c.displayName}
                           type="button"
+                          onMouseDown={(e) => e.preventDefault()}
                           onClick={() => handleSelectMention(c)}
                           className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted transition-colors"
                         >
-                          <div className={`flex size-6 items-center justify-center rounded-full text-[10px] font-semibold ${getAvatarStyle(c.displayName)}`}>
+                          <div
+                            className={`flex size-6 items-center justify-center rounded-full text-[10px] font-semibold ${getAvatarStyle(c.displayName)}`}
+                          >
                             {c.displayName.slice(0, 1).toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -1743,7 +1854,9 @@ function ChatRoute() {
                   <div className="flex items-center justify-between rounded-t-xl border border-b-0 border-border bg-muted/60 px-3 py-2 text-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <Quote className="size-3.5 text-primary shrink-0" />
-                      <span className="font-medium text-foreground shrink-0">Replying to {replyingTo.sender.displayName}:</span>
+                      <span className="font-medium text-foreground shrink-0">
+                        Replying to {replyingTo.sender.displayName}:
+                      </span>
                       <span className="text-muted-foreground truncate">{replyingTo.text || "Attachment"}</span>
                     </div>
                     <Button
@@ -1765,7 +1878,18 @@ function ChatRoute() {
                       value={messageText}
                       onChange={handleTextChange}
                       onKeyDown={handleKeyDown}
-                      placeholder={`Message ${activeSpace.name}... (Press Enter to send, @ to mention)`}
+                      onBlur={() => {
+                        setSlashCommand(null);
+                        setShowMentionMenu(false);
+                      }}
+                      role="combobox"
+                      aria-label={`Message ${activeSpace.name}`}
+                      aria-autocomplete="list"
+                      aria-expanded={showSlashMenu}
+                      aria-controls={showSlashMenu ? "chat-slash-commands" : undefined}
+                      aria-activedescendant={showSlashMenu ? "chat-meet-command" : undefined}
+                      disabled={meetMutation.isPending}
+                      placeholder={`Message ${activeSpace.name}... (@ to mention, / for commands)`}
                       rows={1}
                       className={`max-h-32 min-h-10 w-full resize-none border border-input bg-muted/40 px-3.5 py-2.5 pr-10 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring ${
                         replyingTo ? "rounded-b-xl border-t-0" : "rounded-xl"
@@ -1773,10 +1897,12 @@ function ChatRoute() {
                     />
                     <button
                       type="button"
+                      disabled={meetMutation.isPending}
                       onClick={() => {
                         setMessageText((prev) => `${prev}@`);
                         setShowMentionMenu(true);
                         setMentionFilter("");
+                        setSlashCommand(null);
                         textareaRef.current?.focus();
                       }}
                       className="absolute right-2.5 bottom-2.5 text-muted-foreground hover:text-foreground transition-colors"
@@ -1789,29 +1915,34 @@ function ChatRoute() {
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!messageText.trim() || sendMutation.isPending}
+                    disabled={!messageText.trim() || sendMutation.isPending || meetMutation.isPending}
                     className="size-10 shrink-0 rounded-xl"
                     title="Send message"
                   >
                     <Send className="size-4" />
                   </Button>
                 </form>
+                {meetMutation.isPending && (
+                  <p role="status" className="mt-2 text-xs text-muted-foreground">
+                    Creating Meet link…
+                  </p>
+                )}
+                {meetMutation.error && meetMutation.variables?.scope === composerScope && (
+                  <p role="alert" className="mt-2 text-xs text-destructive">
+                    {meetMutation.error.message}
+                  </p>
+                )}
               </div>
 
               {/* Thread Panel Drawer on right */}
-              {threadParent && (
+              {canReplyInThread && threadParent && threadParent.spaceId === activeSpaceId && (
                 <div className="absolute top-0 right-0 w-80 sm:w-96 z-20 border-l border-border bg-sidebar/95 backdrop-blur-md flex flex-col h-full shadow-2xl animate-in slide-in-from-right duration-200">
                   <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
                     <div className="flex items-center gap-2 font-semibold text-sm">
                       <MessageSquareText className="size-4 text-primary" />
                       <span>Thread</span>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="size-7 p-0"
-                      onClick={() => setThreadParent(null)}
-                    >
+                    <Button size="sm" variant="ghost" className="size-7 p-0" onClick={() => setThreadParent(null)}>
                       <X className="size-4" />
                     </Button>
                   </div>
@@ -1827,7 +1958,9 @@ function ChatRoute() {
                           </AvatarFallback>
                         </Avatar>
                         <span className="font-semibold text-xs">{threadParent.sender.displayName}</span>
-                        <span className="text-[10px] text-muted-foreground">{formatChatTime(threadParent.createTime)}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatChatTime(threadParent.createTime)}
+                        </span>
                       </div>
                       <p className="text-xs text-foreground whitespace-pre-wrap mt-1">{threadParent.text}</p>
                       <RenderAttachments attachments={threadParent.attachments} />
@@ -1855,7 +1988,9 @@ function ChatRoute() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-medium">{reply.sender.displayName}</span>
-                              <span className="text-[10px] text-muted-foreground">{formatChatTime(reply.createTime)}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {formatChatTime(reply.createTime)}
+                              </span>
                             </div>
                             <div className="mt-0.5 rounded-lg bg-muted/60 px-3 py-1.5 text-xs text-foreground whitespace-pre-wrap break-all">
                               {reply.text}
@@ -1919,9 +2054,7 @@ function ChatRoute() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Google Chat</DialogTitle>
-            <DialogDescription>
-              Start a direct message with a contact or create a new space.
-            </DialogDescription>
+            <DialogDescription>Start a direct message with a contact or create a new space.</DialogDescription>
           </DialogHeader>
 
           {/* Toggle DM vs Space */}
@@ -2011,11 +2144,7 @@ function ChatRoute() {
             </Button>
             <Button
               onClick={handleCreateSpace}
-              disabled={
-                newChatType === "SPACE"
-                  ? !newSpaceName.trim()
-                  : !selectedContact
-              }
+              disabled={newChatType === "SPACE" ? !newSpaceName.trim() : !selectedContact}
               className="text-xs"
             >
               {newChatType === "SPACE" ? "Create Space" : "Start Chat"}

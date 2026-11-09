@@ -26,7 +26,7 @@ export class GoogleChatClient {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        ...init?.headers,
+        ...Object.fromEntries(new Headers(init?.headers)),
       },
     });
   }
@@ -51,8 +51,7 @@ export class GoogleChatClient {
     const spaces: ChatSpace[] = (data.spaces ?? []).map((s) => ({
       id: s.name,
       name:
-        s.displayName ||
-        (s.spaceType === "DIRECT_MESSAGE" ? "Direct Message" : s.name.replace("spaces/", "Space ")),
+        s.displayName || (s.spaceType === "DIRECT_MESSAGE" ? "Direct Message" : s.name.replace("spaces/", "Space ")),
       type: (s.spaceType === "DIRECT_MESSAGE"
         ? "DIRECT_MESSAGE"
         : s.spaceType === "GROUP_CHAT"
@@ -71,7 +70,9 @@ export class GoogleChatClient {
     for (const space of spaces) {
       if (
         space.type === "DIRECT_MESSAGE" &&
-        (!space.name || space.name === "Direct Message" || (myNameNorm && space.name.toLowerCase().trim() === myNameNorm))
+        (!space.name ||
+          space.name === "Direct Message" ||
+          (myNameNorm && space.name.toLowerCase().trim() === myNameNorm))
       ) {
         try {
           const membersRes = await this.fetch(`/${space.id}/members?pageSize=10`);
@@ -88,16 +89,20 @@ export class GoogleChatClient {
               }>;
             };
             const memberships = mData.memberships ?? [];
-            const other = memberships.find((m) => {
-              const dName = (m.member?.displayName ?? "").toLowerCase().trim();
-              const email = (m.member?.email ?? "").toLowerCase().trim();
-              if (myEmailNorm && email && email === myEmailNorm) return false;
-              if (myNameNorm && dName && (dName === myNameNorm || dName.startsWith(myNameNorm))) return false;
-              return Boolean(m.member?.displayName || m.member?.email);
-            }) ?? memberships.find((m) => {
-              const dName = (m.member?.displayName ?? "").toLowerCase().trim();
-              return dName !== "you" && dName !== "me" && dName !== myNameNorm;
-            }) ?? memberships[1] ?? memberships[0];
+            const other =
+              memberships.find((m) => {
+                const dName = (m.member?.displayName ?? "").toLowerCase().trim();
+                const email = (m.member?.email ?? "").toLowerCase().trim();
+                if (myEmailNorm && email && email === myEmailNorm) return false;
+                if (myNameNorm && dName && (dName === myNameNorm || dName.startsWith(myNameNorm))) return false;
+                return Boolean(m.member?.displayName || m.member?.email);
+              }) ??
+              memberships.find((m) => {
+                const dName = (m.member?.displayName ?? "").toLowerCase().trim();
+                return dName !== "you" && dName !== "me" && dName !== myNameNorm;
+              }) ??
+              memberships[1] ??
+              memberships[0];
 
             if (other?.member?.displayName) {
               const otherName = other.member.displayName;
@@ -214,7 +219,9 @@ export class GoogleChatClient {
         spaceId: m.space?.name ?? cleanSpace,
         sender: {
           name: m.sender?.name ?? "users/unknown",
-          displayName: isSelf ? "You" : (m.sender?.displayName ?? (m.sender?.email ? m.sender.email.split("@")[0]! : "User")),
+          displayName: isSelf
+            ? "You"
+            : (m.sender?.displayName ?? (m.sender?.email ? m.sender.email.split("@")[0]! : "User")),
           avatarUrl: m.sender?.avatarUrl,
           email: m.sender?.email,
           isSelf: Boolean(isSelf),
@@ -552,7 +559,8 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
       {
         contentName: "Onetouch OT Accounting release sheet",
         contentType: "application/vnd.google-apps.spreadsheet",
-        downloadUri: "https://docs.google.com/spreadsheets/d/1kJqWa0Wjs0aOiuPQZ0hw8QlpophnqnON57rW21T_u_0/edit?gid=486739760#gid=486739760",
+        downloadUri:
+          "https://docs.google.com/spreadsheets/d/1kJqWa0Wjs0aOiuPQZ0hw8QlpophnqnON57rW21T_u_0/edit?gid=486739760#gid=486739760",
       },
     ],
   },
@@ -661,7 +669,7 @@ const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
   },
 ];
 
-function ensureSeedData(store: MailStore, currentUserEmail: string | null) {
+function ensureSeedData(store: MailStore) {
   const existing = store.listChatSpaces();
   const hasOnlyPlaceholder = existing.length === 1 && existing[0]?.id === SEED_SPACE_ID;
   if (existing.length === 0 || hasOnlyPlaceholder) {
@@ -684,7 +692,45 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
   const path = url.pathname.slice("/api/chat/".length);
   const client = ctx.token ? new GoogleChatClient(ctx.token, ctx.accountName, ctx.accountEmail) : null;
   if (!client) {
-    ensureSeedData(ctx.store, ctx.accountEmail ?? null);
+    ensureSeedData(ctx.store);
+  }
+
+  // POST /api/chat/meet
+  if (path === "meet" && req.method === "POST") {
+    if (!ctx.token) {
+      return Response.json({ error: "Connect a Google account to create a Meet link." }, { status: 409 });
+    }
+    try {
+      const token = await ctx.token();
+      const res = await fetch("https://meet.googleapis.com/v2/spaces", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!res.ok) {
+        const error =
+          res.status === 403
+            ? "Allow Google Meet access by reconnecting your Google account, and ensure the Google Meet API is enabled in your Google Cloud project."
+            : "Could not create a Meet link. Try again.";
+        return Response.json({ error }, { status: 502 });
+      }
+      const data: unknown = await res.json();
+      if (
+        !data ||
+        typeof data !== "object" ||
+        !("meetingUri" in data) ||
+        typeof data.meetingUri !== "string" ||
+        !/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/i.test(data.meetingUri)
+      ) {
+        return Response.json({ error: "Google Meet did not return a valid meeting link. Try again." }, { status: 502 });
+      }
+      return Response.json({ meetingUri: data.meetingUri });
+    } catch {
+      return Response.json(
+        { error: "Could not create a Meet link. Check your Google account connection and try again." },
+        { status: 502 },
+      );
+    }
   }
 
   // GET /api/chat/spaces
@@ -769,7 +815,12 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
       return Response.json({ error: "spaceId is required" }, { status: 400 });
     }
 
-    if (client && !spaceId.startsWith("spaces/local-") && !spaceId.startsWith("spaces/dm-") && !spaceId.startsWith("spaces/space-")) {
+    if (
+      client &&
+      !spaceId.startsWith("spaces/local-") &&
+      !spaceId.startsWith("spaces/dm-") &&
+      !spaceId.startsWith("spaces/space-")
+    ) {
       try {
         const liveMsgs = await client.listMessages(spaceId);
         if (liveMsgs.length > 0) {
@@ -797,8 +848,17 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
       return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid message" }, { status: 400 });
     }
 
+    if (parsed.data.threadId && ctx.store.getChatSpace(spaceId)?.type !== "SPACE") {
+      return Response.json({ error: "Thread replies are only available in spaces." }, { status: 400 });
+    }
+
     let sent: ChatMessage;
-    if (client && !spaceId.startsWith("spaces/local-") && !spaceId.startsWith("spaces/dm-") && !spaceId.startsWith("spaces/space-")) {
+    if (
+      client &&
+      !spaceId.startsWith("spaces/local-") &&
+      !spaceId.startsWith("spaces/dm-") &&
+      !spaceId.startsWith("spaces/space-")
+    ) {
       try {
         sent = await client.createMessage(spaceId, parsed.data.text, parsed.data.threadId);
         if (parsed.data.quotedMessage) {
