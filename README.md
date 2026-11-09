@@ -1,17 +1,18 @@
 # Mailfast
 
-A fast Gmail desktop client. Mail **metadata** (sender, recipients, subject, date, snippet, labels) is synced into a local SQLite cache. Every list, search and action is answered locally, and Gmail catches up in the background. Message bodies are intentionally out of scope for now.
+A fast Gmail and Google Chat desktop client. Mail metadata and message bodies, along with Google Chat spaces and conversations, are synced into a local SQLite cache. Every list, search, and action is answered locally with low latency, syncing with Google APIs in the background.
 
 ```
 Electron (apps/desktop)
   ├── UI: Vite+ · React · TanStack Start (SPA) · Router · Query · DB · Virtual   (apps/web)
   └── Bun sidecar: local HTTP API on 127.0.0.1                                 (apps/server)
         ├── Gmail API client: batch requests, field masks, priority rate limiter
+        ├── Google Chat API client: spaces, DMs, real-time messaging, attachments
         ├── Sync engine: inbox-first initial sync, history.list deltas, background backfill
         ├── Prefetch engine: hover / keyboard / label warm-up (gitfaster-style "just in time")
         ├── Outbox: optimistic actions persisted and replayed to Gmail
         ├── Auth: Better Auth (Google OAuth, encrypted tokens)            (packages/auth)
-        └── SQLite via Drizzle: messages, threads, FTS5 search, auth      (packages/db)
+        └── SQLite via Drizzle: messages, threads, chat, FTS5, contacts, auth (packages/db)
 packages/shared: types shared by server and UI
 ```
 
@@ -47,12 +48,22 @@ node apps/desktop/node_modules/electron/install.js
 
 Google OAuth client (one-time):
 
-1. In Google Cloud Console, create a project and **enable the Gmail API**.
-2. Configure the OAuth consent screen. While the app is in "Testing", add your Google account as a test user.
+1. In Google Cloud Console, create a project and enable both the **Gmail API** and **Google Chat API**.
+2. Configure the OAuth consent screen. While the app is in "Testing", add your Google account as a test user. Include scopes for Gmail (`gmail.modify`) and Google Chat (`chat.spaces.readonly`, `chat.messages`, `chat.memberships.readonly`).
 3. Create credentials: **OAuth client ID**, application type **Desktop app**.
 4. Paste the client ID and secret into Mailfast's setup screen. Alternatively, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` before launching.
 
 Desktop clients accept any `127.0.0.1` loopback redirect, so no redirect URI needs registering. Sign-in opens in your system browser (Google blocks embedded webviews).
+
+## Google Chat
+
+Mailfast integrates Google Chat alongside email in a unified desktop interface:
+
+- **Spaces & Direct Messages:** browse, search, and switch between named team spaces and 1:1 direct messages.
+- **Local-first message cache:** spaces and messages are cached in SQLite for instant startup and offline inspection.
+- **Rich message streams:** view markdown formatting, thread reply counts, message quotes, and media/file attachments.
+- **Interactive mentions:** `@mention` chips open quick profile popovers with email contact details and DM shortcuts.
+- **Unified contacts:** chat participants are automatically indexed into local contacts, feeding suggestions into the email composer.
 
 ## Settings
 
@@ -146,14 +157,13 @@ To run a second dev copy next to your main one: `MAILFAST_PORT=47900 MAILFAST_UI
 | ----------------- | ------------------------------------------------------------------------------ |
 | `apps/desktop`    | Electron main + preload, bundled with `vp pack`; packaging config              |
 | `apps/web`        | TanStack Start SPA (prerendered shell), routes, data layer (`src/lib/data.ts`) |
-| `apps/server`     | Bun sidecar: API, Gmail client, sync/prefetch engine, auth glue                |
-| `packages/db`     | Drizzle schema, migrations (incl. FTS5), typed mail store                      |
+| `apps/server`     | Bun sidecar: API, Gmail & Google Chat clients, sync/prefetch engine, auth glue |
+| `packages/db`     | Drizzle schema, migrations (incl. FTS5), typed mail and chat store             |
 | `packages/auth`   | Better Auth config, Google sign-in helpers, token access                       |
 | `packages/env`    | Typed, validated environment (`@t3-oss/env-core` + zod), one entry per process |
-| `packages/shared` | Shared types and label-delta helpers                                           |
+| `packages/shared` | Shared types, schema validators, and label-delta helpers                       |
 
 ## Not done yet
 
-- Message bodies, compose and reply
-- Push notifications (Gmail push needs Cloud Pub/Sub; polling plus focus-triggered sync is used instead)
-- Multiple accounts (the Better Auth schema supports it; the sync engine is single-mailbox today)
+- Push notifications (Gmail and Chat push need Cloud Pub/Sub; polling plus focus-triggered sync is used instead)
+- Multi-account simultaneous background sync (the Better Auth schema and store isolate accounts; simultaneous engine execution is ongoing)
