@@ -423,7 +423,7 @@ try {
               events: scopedEvents,
               token: accountId ? () => auth.token(accountId) : undefined,
               accountEmail: auth.account(accountId),
-              accountName: store.accountSettings().displayName || auth.account(accountId) || "User",
+              accountName: auth.userName(accountId) || store.accountSettings().displayName || auth.account(accountId) || "User",
             })) ?? json({ error: "Not found" }, 404)
           );
         }

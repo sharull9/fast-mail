@@ -807,9 +807,10 @@ export function openMailStore(opts: OpenOptions) {
         .select()
         .from(chatMessages)
         .where(eq(chatMessages.spaceId, spaceId))
-        .orderBy(asc(chatMessages.createTime))
+        .orderBy(desc(chatMessages.createTime))
         .limit(limit)
         .all();
+      rows.reverse();
       return rows.map((r) => ({
         id: r.id,
         spaceId: r.spaceId,

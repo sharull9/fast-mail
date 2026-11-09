@@ -13,7 +13,11 @@ import type { Events } from "@/events.ts";
 const CHAT_API_BASE = "https://chat.googleapis.com/v1";
 
 export class GoogleChatClient {
-  constructor(private readonly getToken: () => Promise<string>) {}
+  constructor(
+    private readonly getToken: () => Promise<string>,
+    private readonly myName?: string | null,
+    private readonly myEmail?: string | null,
+  ) {}
 
   private async fetch(endpoint: string, init?: RequestInit): Promise<Response> {
     const token = await this.getToken();
@@ -41,6 +45,7 @@ export class GoogleChatClient {
         type?: string;
         spaceUri?: string;
         singleUserBotDm?: boolean;
+        lastActiveTime?: string;
       }>;
     };
     const spaces: ChatSpace[] = (data.spaces ?? []).map((s) => ({
@@ -56,11 +61,18 @@ export class GoogleChatClient {
       singleUserBotDm: s.singleUserBotDm,
       spaceUri: s.spaceUri,
       unreadCount: 0,
+      lastMessageTime: s.lastActiveTime ? new Date(s.lastActiveTime).getTime() : undefined,
     }));
 
-    // For DIRECT_MESSAGE spaces without a displayName, resolve the other member's display name
+    const myNameNorm = (this.myName ?? "").toLowerCase().trim();
+    const myEmailNorm = (this.myEmail ?? "").toLowerCase().trim();
+
+    // For DIRECT_MESSAGE spaces, resolve the other member's display name
     for (const space of spaces) {
-      if (space.type === "DIRECT_MESSAGE" && (!space.name || space.name === "Direct Message")) {
+      if (
+        space.type === "DIRECT_MESSAGE" &&
+        (!space.name || space.name === "Direct Message" || (myNameNorm && space.name.toLowerCase().trim() === myNameNorm))
+      ) {
         try {
           const membersRes = await this.fetch(`/${space.id}/members?pageSize=10`);
           if (membersRes.ok) {
@@ -71,17 +83,34 @@ export class GoogleChatClient {
                   displayName?: string;
                   type?: string;
                   avatarUrl?: string;
+                  email?: string;
                 };
               }>;
             };
-            const other = (mData.memberships ?? []).find(
-              (m) => m.member?.type === "HUMAN" || m.member?.displayName,
-            );
+            const memberships = mData.memberships ?? [];
+            const other = memberships.find((m) => {
+              const dName = (m.member?.displayName ?? "").toLowerCase().trim();
+              const email = (m.member?.email ?? "").toLowerCase().trim();
+              if (myEmailNorm && email && email === myEmailNorm) return false;
+              if (myNameNorm && dName && (dName === myNameNorm || dName.startsWith(myNameNorm))) return false;
+              return Boolean(m.member?.displayName || m.member?.email);
+            }) ?? memberships.find((m) => {
+              const dName = (m.member?.displayName ?? "").toLowerCase().trim();
+              return dName !== "you" && dName !== "me" && dName !== myNameNorm;
+            }) ?? memberships[1] ?? memberships[0];
+
             if (other?.member?.displayName) {
-              space.name = other.member.displayName;
+              const otherName = other.member.displayName;
+              if (myNameNorm && otherName.toLowerCase().trim() === myNameNorm && memberships.length === 1) {
+                space.name = `${otherName} (You)`;
+              } else {
+                space.name = otherName;
+              }
               if (other.member.avatarUrl) {
                 space.avatarUrl = other.member.avatarUrl;
               }
+            } else if (other?.member?.email) {
+              space.name = other.member.email.split("@")[0]!;
             }
           }
         } catch {
@@ -90,12 +119,48 @@ export class GoogleChatClient {
       }
     }
 
+    // Sort spaces by lastMessageTime descending
+    spaces.sort((a, b) => (b.lastMessageTime ?? 0) - (a.lastMessageTime ?? 0));
+
+    // Fetch latest message snippet for the top active spaces
+    const activeTop = spaces.slice(0, 15);
+    await Promise.allSettled(
+      activeTop.map(async (sp) => {
+        try {
+          const mRes = await this.fetch(`/${sp.id}/messages?pageSize=1&orderBy=createTime%20desc`);
+          if (mRes.ok) {
+            const mData = (await mRes.json()) as {
+              messages?: Array<{
+                text?: string;
+                formattedText?: string;
+                sender?: { displayName?: string; email?: string };
+              }>;
+            };
+            const firstMsg = mData.messages?.[0];
+            if (firstMsg) {
+              const text = (firstMsg.text || firstMsg.formattedText || "").trim();
+              if (text) {
+                const sName = firstMsg.sender?.displayName;
+                const isMsgSelf =
+                  (myEmailNorm && firstMsg.sender?.email?.toLowerCase().trim() === myEmailNorm) ||
+                  (myNameNorm && sName?.toLowerCase().trim() === myNameNorm);
+                const prefix = isMsgSelf ? "You: " : sName && sp.type === "SPACE" ? `${sName}: ` : "";
+                sp.lastMessageSnippet = `${prefix}${text}`;
+              }
+            }
+          }
+        } catch {
+          // ignore snippet error
+        }
+      }),
+    );
+
     return spaces;
   }
 
   async listMessages(spaceId: string, pageSize = 100): Promise<ChatMessage[]> {
     const cleanSpace = spaceId.startsWith("spaces/") ? spaceId : `spaces/${spaceId}`;
-    const res = await this.fetch(`/${cleanSpace}/messages?pageSize=${pageSize}`);
+    const res = await this.fetch(`/${cleanSpace}/messages?pageSize=${pageSize}&orderBy=createTime%20desc`);
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       throw new Error(`Google Chat API error: ${res.status} ${res.statusText} - ${errText}`);
@@ -111,20 +176,39 @@ export class GoogleChatClient {
         thread?: { name: string };
       }>;
     };
-    return (data.messages ?? []).map((m) => ({
-      id: m.name,
-      spaceId: m.space?.name ?? cleanSpace,
-      sender: {
-        name: m.sender?.name ?? "users/unknown",
-        displayName: m.sender?.displayName ?? (m.sender?.email ? m.sender.email.split("@")[0] : "User"),
-        avatarUrl: m.sender?.avatarUrl,
-        email: m.sender?.email,
-      },
-      createTime: m.createTime ? new Date(m.createTime).getTime() : Date.now(),
-      text: m.text || m.formattedText || "",
-      formattedText: m.formattedText,
-      threadId: m.thread?.name,
-    }));
+    const myNameNorm = (this.myName ?? "").toLowerCase().trim();
+    const myEmailNorm = (this.myEmail ?? "").toLowerCase().trim();
+
+    const msgs = (data.messages ?? []).map((m) => {
+      const senderName = (m.sender?.displayName ?? "").toLowerCase().trim();
+      const senderEmail = (m.sender?.email ?? "").toLowerCase().trim();
+      const isSelf =
+        (myEmailNorm && senderEmail === myEmailNorm) ||
+        (myNameNorm && (senderName === myNameNorm || senderName.startsWith(myNameNorm))) ||
+        m.sender?.name === "users/me" ||
+        senderName === "you" ||
+        senderName === "me";
+
+      return {
+        id: m.name,
+        spaceId: m.space?.name ?? cleanSpace,
+        sender: {
+          name: m.sender?.name ?? "users/unknown",
+          displayName: isSelf ? "You" : (m.sender?.displayName ?? (m.sender?.email ? m.sender.email.split("@")[0]! : "User")),
+          avatarUrl: m.sender?.avatarUrl,
+          email: m.sender?.email,
+          isSelf: Boolean(isSelf),
+        },
+        createTime: m.createTime ? new Date(m.createTime).getTime() : Date.now(),
+        text: m.text || m.formattedText || "",
+        formattedText: m.formattedText,
+        threadId: m.thread?.name,
+      };
+    });
+
+    // Sort ascending for chronological display from top to bottom
+    msgs.sort((a, b) => a.createTime - b.createTime);
+    return msgs;
   }
 
   async createMessage(spaceId: string, text: string, threadId?: string): Promise<ChatMessage> {
@@ -155,9 +239,10 @@ export class GoogleChatClient {
       spaceId: m.space?.name ?? cleanSpace,
       sender: {
         name: m.sender?.name ?? "users/me",
-        displayName: m.sender?.displayName ?? "Me",
+        displayName: m.sender?.displayName ?? "You",
         avatarUrl: m.sender?.avatarUrl,
         email: m.sender?.email,
+        isSelf: true,
       },
       createTime: m.createTime ? new Date(m.createTime).getTime() : Date.now(),
       text: m.text ?? text,
@@ -431,8 +516,10 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
   if (!url.pathname.startsWith("/api/chat/")) return null;
 
   const path = url.pathname.slice("/api/chat/".length);
-  const client = ctx.token ? new GoogleChatClient(ctx.token) : null;
-  ensureSeedData(ctx.store, ctx.accountEmail ?? null);
+  const client = ctx.token ? new GoogleChatClient(ctx.token, ctx.accountName, ctx.accountEmail) : null;
+  if (!client) {
+    ensureSeedData(ctx.store, ctx.accountEmail ?? null);
+  }
 
   // GET /api/chat/spaces
   if (path === "spaces" && req.method === "GET") {
@@ -441,6 +528,11 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
       try {
         const liveSpaces = await client.listSpaces();
         if (liveSpaces.length > 0) {
+          // Remove mock seed spaces so only genuine account data displays
+          for (const seedSpace of INITIAL_CHAT_SPACES) {
+            ctx.store.deleteChatSpace(seedSpace.id);
+          }
+          ctx.store.deleteChatSpace(SEED_SPACE_ID);
           ctx.store.upsertChatSpaces(liveSpaces);
         }
       } catch (err) {

@@ -137,4 +137,135 @@ describe("chat request handling", () => {
 
     store.close();
   });
+
+  test("GoogleChatClient resolves DM other participant and parses lastActiveTime", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        const u = url.toString();
+        if (u.includes("/spaces?pageSize=100")) {
+          return new Response(
+            JSON.stringify({
+              spaces: [
+                {
+                  name: "spaces/dm123",
+                  spaceType: "DIRECT_MESSAGE",
+                  lastActiveTime: "2026-02-15T12:00:00Z",
+                },
+                {
+                  name: "spaces/space-accounting",
+                  displayName: "Accounting",
+                  spaceType: "SPACE",
+                  lastActiveTime: "2026-02-14T10:00:00Z",
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (u.includes("/spaces/dm123/members")) {
+          return new Response(
+            JSON.stringify({
+              memberships: [
+                {
+                  member: {
+                    name: "users/me-id",
+                    displayName: "Arafat ulla",
+                    email: "arafat@infoware.ws",
+                    type: "HUMAN",
+                  },
+                },
+                {
+                  member: {
+                    name: "users/other-id",
+                    displayName: "hemant agaarwal",
+                    email: "hemant@infoware.ws",
+                    type: "HUMAN",
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (u.includes("/messages?pageSize=1")) {
+          return new Response(
+            JSON.stringify({
+              messages: [
+                {
+                  text: "pls share tasks",
+                  sender: { displayName: "hemant agaarwal", email: "hemant@infoware.ws" },
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response("{}", { status: 200 });
+      }) as typeof fetch;
+
+      const { GoogleChatClient } = await import("./chat.ts");
+      const client = new GoogleChatClient(
+        async () => "fake-token",
+        "Arafat ulla",
+        "arafat@infoware.ws",
+      );
+
+      const spaces = await client.listSpaces();
+      expect(spaces.length).toBe(2);
+
+      const dm = spaces.find((s) => s.id === "spaces/dm123");
+      expect(dm?.name).toBe("hemant agaarwal");
+      expect(dm?.lastMessageTime).toBe(new Date("2026-02-15T12:00:00Z").getTime());
+
+      const space = spaces.find((s) => s.id === "spaces/space-accounting");
+      expect(space?.name).toBe("Accounting");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("GoogleChatClient flags isSelf on messages matching user", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        return new Response(
+          JSON.stringify({
+            messages: [
+              {
+                name: "spaces/dm123/messages/1",
+                sender: { displayName: "Arafat ulla", email: "arafat@infoware.ws" },
+                text: "Sharing",
+                createTime: "2026-02-15T12:05:00Z",
+              },
+              {
+                name: "spaces/dm123/messages/2",
+                sender: { displayName: "hemant agaarwal", email: "hemant@infoware.ws" },
+                text: "shared",
+                createTime: "2026-02-15T12:06:00Z",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }) as typeof fetch;
+
+      const { GoogleChatClient } = await import("./chat.ts");
+      const client = new GoogleChatClient(
+        async () => "fake-token",
+        "Arafat ulla",
+        "arafat@infoware.ws",
+      );
+
+      const msgs = await client.listMessages("spaces/dm123");
+      expect(msgs.length).toBe(2);
+      expect(msgs[0].sender.isSelf).toBe(true);
+      expect(msgs[0].sender.displayName).toBe("You");
+      expect(msgs[1].sender.isSelf).toBe(false);
+      expect(msgs[1].sender.displayName).toBe("hemant agaarwal");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
+

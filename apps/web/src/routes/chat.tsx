@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -138,11 +138,35 @@ function ChatRoute() {
 
   // Message sending state
   const [messageText, setMessageText] = useState("");
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialScrollDoneRef = useRef<Record<string, boolean>>({});
+  const lastSpaceIdRef = useRef<string | null>(null);
 
-  // Scroll to bottom when messages update
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Instantly scroll to bottom when opening a chat or when messages first load
+  useLayoutEffect(() => {
+    if (!activeSpaceId || messages.length === 0) return;
+
+    const container = messagesContainerRef.current;
+    const isNewSpace = lastSpaceIdRef.current !== activeSpaceId;
+    const hasInitialScrolled = initialScrollDoneRef.current[activeSpaceId];
+
+    if (isNewSpace || !hasInitialScrolled) {
+      lastSpaceIdRef.current = activeSpaceId;
+      initialScrollDoneRef.current[activeSpaceId] = true;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    } else {
+      // For subsequent messages arriving while already viewing the chat
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages.length, activeSpaceId]);
 
   // Send message mutation
@@ -416,7 +440,7 @@ function ChatRoute() {
         </div>
 
         {/* Right panel: Active Conversation View */}
-        <div className="flex flex-1 flex-col overflow-hidden bg-background">
+        <div className="flex flex-1 flex-col overflow-hidden min-w-0 bg-background">
           {activeSpace ? (
             <>
               {/* Conversation header */}
@@ -462,7 +486,7 @@ function ChatRoute() {
               </header>
 
               {/* Messages feed */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-6">
                 {messagesLoading && messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
                     Loading messages...
@@ -500,11 +524,11 @@ function ChatRoute() {
                           return (
                             <div
                               key={msg.id}
-                              className={`flex items-start gap-3 w-full ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+                              className={`flex items-start gap-3 w-full min-w-0 ${isSelf ? "flex-row-reverse" : "flex-row"}`}
                             >
                               <Avatar className="size-8 shrink-0 mt-0.5">
                                 {msg.sender.avatarUrl ? (
-                                  <AvatarImage src={msg.sender.avatarUrl} alt="" />
+                                   <AvatarImage src={msg.sender.avatarUrl} alt="" />
                                 ) : null}
                                 <AvatarFallback
                                   className={`text-[11px] font-medium ${
@@ -515,7 +539,7 @@ function ChatRoute() {
                                 </AvatarFallback>
                               </Avatar>
 
-                              <div className={`max-w-[75%] ${isSelf ? "items-end" : "items-start"} flex flex-col`}>
+                              <div className={`max-w-[75%] min-w-0 ${isSelf ? "items-end" : "items-start"} flex flex-col`}>
                                 <div className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}>
                                   <span className="text-[11px] font-medium text-foreground">
                                     {isSelf ? "You" : msg.sender.displayName}
@@ -526,7 +550,7 @@ function ChatRoute() {
                                 </div>
 
                                 <div
-                                  className={`rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap wrap-break-word text-left ${
+                                  className={`rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-left ${
                                     isSelf
                                       ? "bg-primary text-primary-foreground rounded-tr-xs"
                                       : "bg-muted text-foreground rounded-tl-xs"
