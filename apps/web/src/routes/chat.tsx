@@ -94,7 +94,9 @@ function ChatRoute() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const auth = useQuery(authQuery).data;
-  const currentUserEmail = auth?.accounts?.find((a) => a.id === auth.activeAccountId)?.email ?? auth?.account ?? "";
+  const currentAccount = auth?.accounts?.find((a) => a.id === auth.activeAccountId);
+  const currentUserEmail = (currentAccount?.email ?? auth?.account ?? "").toLowerCase();
+  const currentUserName = (currentAccount?.name ?? "").toLowerCase();
 
   const { data: spacesData, isLoading: spacesLoading } = useQuery(chatSpacesQuery());
   const spaces = spacesData?.spaces ?? [];
@@ -514,25 +516,33 @@ function ChatRoute() {
                       <div className="space-y-3">
                         {group.messages.map((msg) => {
                           const isSelf =
-                            msg.sender.isSelf ||
-                            (currentUserEmail && msg.sender.email?.toLowerCase() === currentUserEmail.toLowerCase());
+                            Boolean(msg.sender.isSelf) ||
+                            msg.sender.name === "users/me" ||
+                            msg.sender.displayName?.toLowerCase() === "you" ||
+                            msg.sender.displayName?.toLowerCase() === "me" ||
+                            (Boolean(currentUserEmail) && msg.sender.email?.toLowerCase() === currentUserEmail) ||
+                            (Boolean(currentUserName) && msg.sender.displayName?.toLowerCase() === currentUserName);
 
                           return (
                             <div
                               key={msg.id}
-                              className={`flex items-start gap-3 ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+                              className={`flex items-start gap-3 w-full ${isSelf ? "justify-end flex-row-reverse" : "justify-start flex-row"}`}
                             >
                               <Avatar className="size-8 shrink-0 mt-0.5">
                                 {msg.sender.avatarUrl ? (
                                   <AvatarImage src={msg.sender.avatarUrl} alt="" />
                                 ) : null}
-                                <AvatarFallback className="text-[11px] bg-muted font-medium text-foreground">
-                                  {(msg.sender.displayName || "User").slice(0, 2).toUpperCase()}
+                                <AvatarFallback
+                                  className={`text-[11px] font-medium ${
+                                    isSelf ? "bg-primary/20 text-primary" : "bg-muted text-foreground"
+                                  }`}
+                                >
+                                  {isSelf ? "YO" : (msg.sender.displayName || "User").slice(0, 2).toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
 
-                              <div className={`max-w-[75%] ${isSelf ? "items-end" : "items-start"} flex flex-col`}>
-                                <div className="flex items-center gap-2 px-1 mb-1">
+                              <div className={`max-w-[75%] ${isSelf ? "items-end text-right" : "items-start text-left"} flex flex-col`}>
+                                <div className={`flex items-center gap-2 px-1 mb-1 ${isSelf ? "flex-row-reverse" : "flex-row"}`}>
                                   <span className="text-[11px] font-medium text-foreground">
                                     {isSelf ? "You" : msg.sender.displayName}
                                   </span>
