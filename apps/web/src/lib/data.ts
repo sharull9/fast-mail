@@ -1,5 +1,5 @@
 import { clearContactCache } from "@/lib/contact-cache";
-import { QueryClient, queryOptions } from "@tanstack/react-query";
+import { QueryClient, keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { createCollection, createOptimisticAction } from "@tanstack/react-db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import {
@@ -8,7 +8,9 @@ import {
   INBOX_TABS,
   applyDelta,
   type Label,
+  type ChatMessage,
   type ConnectionStatus,
+  type ListChatSpacesResponse,
   type ServerEvent,
   type ThreadAction,
   type ThreadDetail,
@@ -409,19 +411,132 @@ function receiveEvent(ev: ServerEvent) {
   if (ev.type === "labels-changed" && id === getActiveAccountId()) void labelsCollection.utils.refetch();
 }
 
-export const chatSpacesQuery = (accountId = getActiveAccountId()) =>
-  queryOptions({
-    queryKey: ["chat-spaces", accountId],
-    queryFn: () => api.chatSpaces(accountId),
-    refetchInterval: 15_000,
-  });
+// ------------------------------------------------------------------ chat
 
-export const chatMessagesQuery = (spaceId: string, accountId = getActiveAccountId()) =>
-  queryOptions({
-    queryKey: ["chat-messages", accountId, spaceId],
-    queryFn: () => api.chatMessages(spaceId, accountId),
-    refetchInterval: 5_000,
+/**
+ * Chat data is cached in localStorage so the last conversation paints on the
+ * first frame after a reload. The server answers reads from SQLite, so the
+ * refetch that follows is cheap; SSE still pushes real changes.
+ */
+const CHAT_SPACES_STORAGE_PREFIX = "mailfast:chat-spaces:";
+const CHAT_MESSAGES_STORAGE_PREFIX = "mailfast:chat-messages:";
+const CHAT_MESSAGES_INDEX_PREFIX = "mailfast:chat-messages-index:";
+/** Keep the newest N conversations on disk; older ones refetch from SQLite. */
+const CHAT_MESSAGES_CACHE_LIMIT = 30;
+
+interface StoredChat<T> {
+  data: T;
+  savedAt: number;
+}
+
+const chatCacheScope = (accountId: string | null) => accountId ?? "anonymous";
+const chatSpacesStorageKey = (accountId: string | null) => `${CHAT_SPACES_STORAGE_PREFIX}${chatCacheScope(accountId)}`;
+const chatMessagesStorageKey = (accountId: string | null, spaceId: string) =>
+  `${CHAT_MESSAGES_STORAGE_PREFIX}${chatCacheScope(accountId)}:${spaceId}`;
+
+/** Parsed snapshots for this session, so re-renders never re-parse localStorage. */
+const chatCacheMemo = new Map<string, StoredChat<unknown> | null>();
+
+function readChatCache<T>(key: string): StoredChat<T> | null {
+  if (typeof window === "undefined") return null;
+  if (chatCacheMemo.has(key)) return (chatCacheMemo.get(key) as StoredChat<T> | null) ?? null;
+  let value: StoredChat<unknown> | null = null;
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as Partial<StoredChat<unknown>> | null) : null;
+    if (parsed && typeof parsed.savedAt === "number" && parsed.data !== undefined) {
+      value = { data: parsed.data, savedAt: parsed.savedAt };
+    }
+  } catch {
+    value = null;
+  }
+  chatCacheMemo.set(key, value);
+  return value as StoredChat<T> | null;
+}
+
+function writeChatCache(key: string, data: unknown) {
+  if (typeof window === "undefined") return;
+  const entry: StoredChat<unknown> = { data, savedAt: Date.now() };
+  chatCacheMemo.set(key, entry);
+  try {
+    localStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // Quota or private mode: the cache is best effort, never fatal.
+  }
+}
+
+/** Marks a space as recently opened and drops the least recently used ones. */
+function touchChatMessagesCache(accountId: string | null, spaceId: string) {
+  if (typeof window === "undefined") return;
+  const indexKey = `${CHAT_MESSAGES_INDEX_PREFIX}${chatCacheScope(accountId)}`;
+  let recent: string[] = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(indexKey) ?? "null") as unknown;
+    if (Array.isArray(parsed)) recent = parsed.filter((value): value is string => typeof value === "string");
+  } catch {
+    recent = [];
+  }
+  const next = [spaceId, ...recent.filter((id) => id !== spaceId)];
+  for (const evicted of next.slice(CHAT_MESSAGES_CACHE_LIMIT)) {
+    const evictedKey = chatMessagesStorageKey(accountId, evicted);
+    chatCacheMemo.delete(evictedKey);
+    try {
+      localStorage.removeItem(evictedKey);
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    localStorage.setItem(indexKey, JSON.stringify(next.slice(0, CHAT_MESSAGES_CACHE_LIMIT)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export const chatSpacesQuery = (accountId = getActiveAccountId()) => {
+  const storageKey = chatSpacesStorageKey(accountId);
+  const cached = readChatCache<ListChatSpacesResponse>(storageKey);
+  return queryOptions({
+    queryKey: ["chat-spaces", accountId],
+    queryFn: async () => {
+      const data = await api.chatSpaces(accountId);
+      writeChatCache(storageKey, data);
+      return data;
+    },
+    // SSE pushes `chat-spaces-changed`; polling is only a safety net.
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+    // Paint the last snapshot immediately, then revalidate because it is stale.
+    initialData: cached?.data,
+    initialDataUpdatedAt: cached?.savedAt,
   });
+};
+
+export const chatMessagesQuery = (spaceId: string, accountId = getActiveAccountId()) => {
+  const storageKey = chatMessagesStorageKey(accountId, spaceId);
+  const cached = readChatCache<{ messages: ChatMessage[] }>(storageKey);
+  return queryOptions({
+    queryKey: ["chat-messages", accountId, spaceId],
+    queryFn: async () => {
+      const data = await api.chatMessages(spaceId, accountId);
+      writeChatCache(storageKey, data);
+      touchChatMessagesCache(accountId, spaceId);
+      return data;
+    },
+    // No placeholderData: previous data belongs to a different conversation.
+    staleTime: 10_000,
+    refetchInterval: 20_000,
+    initialData: cached?.data,
+    initialDataUpdatedAt: cached?.savedAt,
+  });
+};
+
+/** Warm a conversation on hover; the server answers from SQLite. */
+export function prefetchChatSpace(spaceId: string) {
+  if (!spaceId) return;
+  void queryClient.prefetchQuery(chatMessagesQuery(spaceId));
+}
 
 /** Fetch SSE allows the account header and retains Electron/pairing authentication. */
 export function connectEvents() {

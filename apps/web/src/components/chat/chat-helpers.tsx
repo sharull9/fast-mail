@@ -84,7 +84,7 @@ export function MentionChip({
 }) {
   const [open, setOpen] = useState(false);
   const cleanName = name.startsWith("@") ? name.slice(1).trim() : name.trim();
-  const email = targetEmail || `${cleanName.toLowerCase().replace(/\s+/g, ".")}@example.com`;
+  const email = targetEmail;
   const avatarStyle = getAvatarStyle(cleanName);
 
   return (
@@ -92,7 +92,7 @@ export function MentionChip({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-semibold cursor-pointer transition-colors ${
+          className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-semibold cursor-pointer transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
             isSelf ? "bg-white/25 text-white hover:bg-white/35" : "bg-primary/15 text-primary hover:bg-primary/25"
           }`}
         >
@@ -109,7 +109,7 @@ export function MentionChip({
             </div>
             <div className="min-w-0 flex-1">
               <div className="font-semibold text-sm text-foreground truncate">{cleanName}</div>
-              <div className="text-xs text-muted-foreground truncate">{email}</div>
+              {email && <div className="text-xs text-muted-foreground truncate">{email}</div>}
               <div className="mt-1 flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-emerald-500" />
                 <span className="text-[10px] text-muted-foreground">Active in Google Chat</span>
@@ -118,11 +118,11 @@ export function MentionChip({
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1 p-2 bg-muted/30">
+        <div className={`grid ${email ? "grid-cols-4" : "grid-cols-3"} gap-1 p-2 bg-muted/30`}>
           <Button
             variant="ghost"
             size="sm"
-            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px]"
+            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px] transition-transform duration-150 active:scale-[0.97]"
             onClick={() => {
               setOpen(false);
               onOpenDm?.(cleanName, email);
@@ -132,23 +132,25 @@ export function MentionChip({
             <MessageSquare className="size-4 text-primary" />
             <span>Chat</span>
           </Button>
+          {email && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px] transition-transform duration-150 active:scale-[0.97]"
+              onClick={() => {
+                setOpen(false);
+                window.open(`mailto:${email}`, "_blank");
+              }}
+              title="Send Email"
+            >
+              <Mail className="size-4 text-blue-500" />
+              <span>Email</span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
-            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px]"
-            onClick={() => {
-              setOpen(false);
-              window.open(`mailto:${email}`, "_blank");
-            }}
-            title="Send Email"
-          >
-            <Mail className="size-4 text-blue-500" />
-            <span>Email</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px]"
+            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px] transition-transform duration-150 active:scale-[0.97]"
             onClick={() => {
               setOpen(false);
               window.open("https://meet.google.com/new", "_blank");
@@ -161,7 +163,7 @@ export function MentionChip({
           <Button
             variant="ghost"
             size="sm"
-            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px]"
+            className="flex flex-col items-center gap-1 h-auto py-2 px-1 text-[11px] transition-transform duration-150 active:scale-[0.97]"
             onClick={() => {
               setOpen(false);
               window.open("https://calendar.google.com", "_blank");
@@ -465,7 +467,7 @@ export function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
           e.stopPropagation();
           window.open(service.url, "_blank");
         }}
-        className="overflow-hidden rounded-2xl border border-amber-300/40 dark:border-amber-700/50 bg-card max-w-sm shadow-xs cursor-pointer group transition-transform hover:scale-[1.01]"
+        className="overflow-hidden rounded-2xl border border-amber-300/40 bg-card max-w-sm shadow-xs cursor-pointer group transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] dark:border-amber-700/50"
       >
         <div className="bg-[#FBBC04] px-6 py-5 flex items-center justify-center relative select-none">
           <div className="flex items-center gap-4 text-amber-950">
@@ -489,14 +491,14 @@ export function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-between border-t border-amber-300/40 dark:border-amber-800/40 bg-card px-4 py-3 group-hover:bg-muted/70 transition-colors">
+        <div className="flex items-center justify-between border-t border-amber-300/40 bg-card px-4 py-3 transition-colors group-hover:bg-muted/70 dark:border-amber-800/40">
           <div className="flex items-center gap-2.5">
             <div className="flex size-7 items-center justify-center rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
               <Video className="size-4" />
             </div>
             <span className="font-semibold text-xs text-foreground">Join video meeting</span>
           </div>
-          <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+          <ExternalLink className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
         </div>
       </div>
     );
@@ -509,14 +511,18 @@ export function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
           e.stopPropagation();
           window.open(service.url, "_blank");
         }}
-        className="overflow-hidden rounded-xl border border-border/80 bg-card max-w-sm shadow-xs cursor-pointer group transition-transform hover:scale-[1.01]"
+        className="overflow-hidden rounded-xl border border-border/80 bg-card max-w-sm shadow-xs cursor-pointer group transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
       >
         {service.id && (
           <div className="relative aspect-video w-full bg-black/80 overflow-hidden">
             <img
               src={`https://img.youtube.com/vi/${service.id}/hqdefault.jpg`}
-              alt="YouTube Thumbnail"
-              className="size-full object-cover group-hover:scale-105 transition-transform duration-200"
+              alt={`${service.title} video thumbnail`}
+              width={480}
+              height={360}
+              loading="lazy"
+              decoding="async"
+              className="size-full object-cover transition-opacity duration-150"
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors">
               <div className="flex size-11 items-center justify-center rounded-full bg-red-600 text-white shadow-lg">
@@ -546,7 +552,7 @@ export function GoogleServiceCard({ service }: { service: GoogleServiceItem }) {
         e.stopPropagation();
         window.open(service.url, "_blank");
       }}
-      className="overflow-hidden rounded-xl border border-border/80 bg-card hover:bg-muted/50 p-3 max-w-sm shadow-xs cursor-pointer group transition-all hover:scale-[1.01]"
+      className="overflow-hidden rounded-xl border border-border/80 bg-card p-3 max-w-sm shadow-xs cursor-pointer group transition-[background-color,border-color,transform] duration-150 hover:bg-muted/50 active:scale-[0.98]"
     >
       <div className="flex items-start gap-3">
         <div
@@ -735,7 +741,7 @@ export function RenderMessageText({
             href={token}
             target="_blank"
             rel="noreferrer noopener"
-            className="underline underline-offset-2 break-all opacity-95 hover:opacity-100"
+            className="underline underline-offset-2 wrap-break-word opacity-95 hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             {token}
@@ -750,7 +756,7 @@ export function RenderMessageText({
 
   return (
     <div className="space-y-2">
-      <div className="whitespace-pre-wrap break-all wrap-anywhere">
+      <div className="whitespace-pre-wrap wrap-break-word wrap-anywhere">
         {lines.map((line, lineIdx) => {
           const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
           if (headingMatch) {
@@ -816,9 +822,12 @@ export function RenderAttachments({
               <img
                 src={mediaSrc}
                 alt={att.contentName || "Image preview"}
-                className="max-h-80 w-full object-contain bg-background/50 hover:opacity-95 cursor-pointer transition-opacity"
+                width={640}
+                height={480}
+                className="aspect-4/3 max-h-80 w-full cursor-pointer bg-background/50 object-contain transition-opacity duration-150 hover:opacity-95"
                 onClick={() => window.open(att.downloadUri || att.thumbnailUri || mediaSrc, "_blank")}
                 loading="lazy"
+                decoding="async"
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (att.thumbnailUri && target.src !== att.thumbnailUri) {
@@ -841,7 +850,7 @@ export function RenderAttachments({
         return (
           <div
             key={idx}
-            className="flex items-center gap-3 rounded-xl border border-border/80 bg-card p-3 max-w-sm hover:bg-muted/60 cursor-pointer group transition-all hover:scale-[1.01] shadow-xs"
+            className="flex items-center gap-3 rounded-xl border border-border/80 bg-card p-3 max-w-sm cursor-pointer group shadow-xs transition-[background-color,border-color,transform] duration-150 hover:bg-muted/60 active:scale-[0.98]"
             onClick={() => window.open(att.downloadUri || att.thumbnailUri, "_blank")}
           >
             <div

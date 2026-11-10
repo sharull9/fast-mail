@@ -3,6 +3,12 @@
 @import "tailwindcss";
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 :root {
   color-scheme: light;
   --background: #faf9fc;
@@ -393,7 +399,11 @@ kbd {
   position: absolute;
   pointer-events: none;
   z-index: 50;
-  transition: all 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    inset 120ms var(--ease-out-strong),
+    background-color 120ms var(--ease-out-strong),
+    border-color 120ms var(--ease-out-strong),
+    box-shadow 120ms var(--ease-out-strong);
   background: color-mix(in oklab, var(--primary) 22%, transparent);
   border: 2px dashed var(--primary);
   border-radius: var(--radius-md);
@@ -551,6 +561,86 @@ kbd {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+
+  .chat-motion {
+    transform: none !important;
+  }
+  .chat-mention-menu,
+  .chat-quote-banner {
+    animation-name: chat-fade-in !important;
+  }
+  .chat-thread-drawer {
+    transform: none !important;
+    transition-property: opacity !important;
+  }
+  .chat-new-messages {
+    transform: translate(-50%, 0) !important;
+    transition-property: opacity !important;
+  }
+}
+
+@keyframes chat-popover-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes chat-quote-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chat-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.chat-mention-menu {
+  animation: chat-popover-enter 150ms var(--ease-out-strong) both;
+}
+
+.chat-quote-banner {
+  animation: chat-quote-enter 150ms var(--ease-out-strong) both;
+}
+
+.chat-thread-drawer {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    transform 250ms var(--ease-drawer),
+    opacity 150ms var(--ease-out-strong);
+}
+
+@starting-style {
+  .chat-thread-drawer {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.chat-new-messages {
+  left: 50%;
+  bottom: 1rem;
+  transform: translate(-50%, 8px);
+}
+
+.chat-new-messages-visible {
+  transform: translate(-50%, 0);
 }
 
 /* Thread card. Hierarchy: state (unread dot, avatar) -> who + when (head) -> what (subject)

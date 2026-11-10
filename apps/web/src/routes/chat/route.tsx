@@ -1,21 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, Link, useNavigate, useRouterState, Outlet } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  MessageSquare,
-  Users,
-  Plus,
-  Search,
-  ArrowLeft,
-  Hash,
-  User,
-  Check,
-} from "lucide-react";
-import { chatSpacesQuery } from "@/lib/data";
+import { MessageSquare, Users, Plus, Search, ArrowLeft, Hash, User, Check, X } from "lucide-react";
+import { chatMessagesQuery, chatSpacesQuery } from "@/lib/data";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -49,42 +41,60 @@ function ChatLayout() {
   const [contactSearch, setContactSearch] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Contacts search for new DM
   useEffect(() => {
     if (!newChatOpen || newChatType !== "DIRECT_MESSAGE") return;
     let active = true;
-    void api.contacts(contactSearch, 10).then((res) => {
-      if (active) setContacts(res);
-    });
+    void api
+      .contacts(contactSearch, 10)
+      .then((res) => {
+        if (active) setContacts(res);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setCreateError(error instanceof Error ? error.message : "Could not load contacts.");
+        }
+      });
     return () => {
       active = false;
     };
   }, [contactSearch, newChatOpen, newChatType]);
 
   const handleCreateSpace = async () => {
-    if (newChatType === "SPACE") {
-      const name = newSpaceName.trim();
-      if (!name) return;
-      const created = await api.createChatSpace({ displayName: name, spaceType: "SPACE" });
-      setNewChatOpen(false);
-      setNewSpaceName("");
-      void queryClient.invalidateQueries({ queryKey: ["chat-spaces"] });
-      const cleanId = created.id.replace(/^spaces\//, "");
-      void navigate({ to: "/chat/spaces/$id", params: { id: cleanId } });
-    } else {
-      if (!selectedContact) return;
-      const created = await api.createChatSpace({
-        displayName: selectedContact.name || selectedContact.email,
-        spaceType: "DIRECT_MESSAGE",
-        email: selectedContact.email,
-      });
-      setNewChatOpen(false);
-      setSelectedContact(null);
-      setContactSearch("");
-      void queryClient.invalidateQueries({ queryKey: ["chat-spaces"] });
-      const cleanId = created.id.replace(/^spaces\//, "");
-      void navigate({ to: "/chat/direct/$id", params: { id: cleanId } });
+    if (isCreating) return;
+    setCreateError(null);
+    setIsCreating(true);
+    try {
+      if (newChatType === "SPACE") {
+        const name = newSpaceName.trim();
+        if (!name) return;
+        const created = await api.createChatSpace({ displayName: name, spaceType: "SPACE" });
+        setNewChatOpen(false);
+        setNewSpaceName("");
+        void queryClient.invalidateQueries({ queryKey: ["chat-spaces"] });
+        const cleanId = created.id.replace(/^spaces\//, "");
+        void navigate({ to: "/chat/spaces/$id", params: { id: cleanId } });
+      } else {
+        if (!selectedContact) return;
+        const created = await api.createChatSpace({
+          displayName: selectedContact.name || selectedContact.email,
+          spaceType: "DIRECT_MESSAGE",
+          email: selectedContact.email,
+        });
+        setNewChatOpen(false);
+        setSelectedContact(null);
+        setContactSearch("");
+        void queryClient.invalidateQueries({ queryKey: ["chat-spaces"] });
+        const cleanId = created.id.replace(/^spaces\//, "");
+        void navigate({ to: "/chat/direct/$id", params: { id: cleanId } });
+      }
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "Could not create the chat.");
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -147,19 +157,38 @@ function ChatLayout() {
               <Input
                 type="text"
                 placeholder="Search chat..."
-                className="h-8.5 pl-8 text-xs"
+                aria-label="Search conversations"
+                className="h-8.5 pl-8 pr-8 text-xs"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && searchQuery) {
+                    e.preventDefault();
+                    setSearchQuery("");
+                  }
+                }}
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="Clear conversation search"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute top-1.5 right-1.5 inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Category tabs and Unread toggle */}
             <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1" role="tablist" aria-label="Conversation type">
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === "ALL"}
                   onClick={() => setActiveTab("ALL")}
-                  className={`rounded-md px-2 py-1 font-medium transition-colors ${
+                  className={`rounded-md px-2 py-1 font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring ${
                     activeTab === "ALL" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -167,8 +196,10 @@ function ChatLayout() {
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === "DIRECT_MESSAGE"}
                   onClick={() => setActiveTab("DIRECT_MESSAGE")}
-                  className={`rounded-md px-2 py-1 font-medium transition-colors ${
+                  className={`rounded-md px-2 py-1 font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring ${
                     activeTab === "DIRECT_MESSAGE"
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -178,8 +209,10 @@ function ChatLayout() {
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === "SPACE"}
                   onClick={() => setActiveTab("SPACE")}
-                  className={`rounded-md px-2 py-1 font-medium transition-colors ${
+                  className={`rounded-md px-2 py-1 font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring ${
                     activeTab === "SPACE" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -190,10 +223,11 @@ function ChatLayout() {
               {/* Unread toggle */}
               <button
                 type="button"
+                aria-pressed={unreadOnly}
                 onClick={() => setUnreadOnly((prev) => !prev)}
-                className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium text-[11px] transition-colors ${
+                className={`flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 font-medium text-[11px] transition-[background-color,color,border-color,transform] duration-150 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring ${
                   unreadOnly
-                    ? "bg-primary/15 text-primary border border-primary/30"
+                    ? "bg-primary/15 text-primary border-primary/30"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
                 title="Filter unread conversations"
@@ -207,9 +241,42 @@ function ChatLayout() {
           {/* Conversations list */}
           <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
             {spacesLoading && spaces.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">Loading conversations...</div>
+              <div className="space-y-1 py-1" role="status" aria-label="Loading conversations" aria-busy="true">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <div key={index} className="flex items-center gap-3 rounded-xl px-2.5 py-2.5">
+                    <Skeleton className="size-8.5 shrink-0 rounded-full" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Skeleton className="h-3 w-2/5" />
+                        <Skeleton className="h-2.5 w-8" />
+                      </div>
+                      <Skeleton className="h-2.5 w-3/4" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : filteredSpaces.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">No conversations found</div>
+              <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                <MessageSquare className="size-6 text-muted-foreground/60" />
+                <p className="text-xs text-muted-foreground">
+                  {spaces.length === 0 ? "No conversations yet" : "No conversations found"}
+                </p>
+                {(searchQuery.trim() || unreadOnly || activeTab !== "ALL") && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setUnreadOnly(false);
+                      setActiveTab("ALL");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
             ) : (
               filteredSpaces.map((space) => {
                 const isDm = space.type === "DIRECT_MESSAGE";
@@ -224,6 +291,12 @@ function ChatLayout() {
                 return (
                   <button
                     key={space.id}
+                    onMouseEnter={() => {
+                      void queryClient.prefetchQuery(chatMessagesQuery(space.id));
+                    }}
+                    onFocus={() => {
+                      void queryClient.prefetchQuery(chatMessagesQuery(space.id));
+                    }}
                     onClick={() => {
                       if (isDm) {
                         void navigate({ to: "/chat/direct/$id", params: { id: cleanId } });
@@ -231,7 +304,7 @@ function ChatLayout() {
                         void navigate({ to: "/chat/spaces/$id", params: { id: cleanId } });
                       }
                     }}
-                    className={`group flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
+                    className={`group flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-[background-color,color,transform] duration-150 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring ${
                       isSelected
                         ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-xs"
                         : "text-foreground/80 hover:bg-sidebar-accent/50 hover:text-foreground"
@@ -255,23 +328,36 @@ function ChatLayout() {
                     {/* Details */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="truncate text-[13px] leading-tight font-medium">{space.name}</span>
+                        <span
+                          className={`truncate text-[13px] leading-tight ${
+                            space.unreadCount > 0 ? "font-semibold text-foreground" : "font-medium"
+                          }`}
+                        >
+                          {space.name}
+                        </span>
                         {space.lastMessageTime && (
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                             {formatChatListTime(space.lastMessageTime)}
                           </span>
                         )}
                       </div>
                       {space.lastMessageSnippet && (
-                        <p className="truncate text-xs text-muted-foreground leading-snug mt-0.5">
+                        <p
+                          className={`mt-0.5 truncate text-xs leading-snug ${
+                            space.unreadCount > 0 ? "text-foreground" : "text-muted-foreground"
+                          }`}
+                        >
                           {space.lastMessageSnippet}
                         </p>
                       )}
                     </div>
 
                     {space.unreadCount > 0 && (
-                      <Badge variant="default" className="size-5 shrink-0 justify-center p-0 text-[10px]">
-                        {space.unreadCount}
+                      <Badge
+                        variant="default"
+                        className="h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px] tabular-nums"
+                      >
+                        {space.unreadCount > 99 ? "99+" : space.unreadCount}
                       </Badge>
                     )}
                   </button>
@@ -286,7 +372,13 @@ function ChatLayout() {
       </div>
 
       {/* New Chat / Create Space Dialog */}
-      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+      <Dialog
+        open={newChatOpen}
+        onOpenChange={(open) => {
+          setNewChatOpen(open);
+          if (open) setCreateError(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Google Chat</DialogTitle>
@@ -297,8 +389,13 @@ function ChatLayout() {
           <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
             <button
               type="button"
-              onClick={() => setNewChatType("DIRECT_MESSAGE")}
-              className={`flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors ${
+              aria-pressed={newChatType === "DIRECT_MESSAGE"}
+              disabled={isCreating}
+              onClick={() => {
+                setNewChatType("DIRECT_MESSAGE");
+                setCreateError(null);
+              }}
+              className={`flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                 newChatType === "DIRECT_MESSAGE" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
               }`}
             >
@@ -307,8 +404,13 @@ function ChatLayout() {
             </button>
             <button
               type="button"
-              onClick={() => setNewChatType("SPACE")}
-              className={`flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors ${
+              aria-pressed={newChatType === "SPACE"}
+              disabled={isCreating}
+              onClick={() => {
+                setNewChatType("SPACE");
+                setCreateError(null);
+              }}
+              className={`flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                 newChatType === "SPACE" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
               }`}
             >
@@ -320,12 +422,20 @@ function ChatLayout() {
           {newChatType === "DIRECT_MESSAGE" ? (
             <div className="space-y-3 py-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Search contact</label>
+                <label htmlFor="chat-contact-search" className="text-xs font-medium">
+                  Search contact
+                </label>
                 <Input
+                  id="chat-contact-search"
                   type="text"
                   placeholder="Type a name or email address..."
                   value={contactSearch}
-                  onChange={(e) => setContactSearch(e.target.value)}
+                  autoFocus
+                  disabled={isCreating}
+                  onChange={(e) => {
+                    setContactSearch(e.target.value);
+                    setCreateError(null);
+                  }}
                   className="text-xs"
                 />
               </div>
@@ -343,8 +453,9 @@ function ChatLayout() {
                       <button
                         key={contact.email}
                         type="button"
+                        disabled={isCreating}
                         onClick={() => setSelectedContact(contact)}
-                        className={`flex w-full items-center justify-between p-2.5 text-left text-xs transition-colors ${
+                        className={`flex w-full items-center justify-between p-2.5 text-left text-xs transition-[background-color,color,transform] duration-150 active:scale-[0.99] ${
                           isSelected ? "bg-sidebar-accent font-medium" : "hover:bg-muted"
                         }`}
                       >
@@ -362,28 +473,48 @@ function ChatLayout() {
           ) : (
             <div className="space-y-3 py-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Space Name</label>
+                <label htmlFor="chat-space-name" className="text-xs font-medium">
+                  Space Name
+                </label>
                 <Input
+                  id="chat-space-name"
                   type="text"
                   placeholder="e.g. Announcements, Engineering, Design..."
                   value={newSpaceName}
-                  onChange={(e) => setNewSpaceName(e.target.value)}
+                  autoFocus
+                  disabled={isCreating}
+                  onChange={(e) => {
+                    setNewSpaceName(e.target.value);
+                    setCreateError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      void handleCreateSpace();
+                    }
+                  }}
                   className="text-xs"
                 />
               </div>
             </div>
           )}
 
+          {createError && (
+            <p role="alert" className="text-xs text-destructive">
+              {createError}
+            </p>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewChatOpen(false)} className="text-xs">
+            <Button variant="outline" onClick={() => setNewChatOpen(false)} disabled={isCreating} className="text-xs">
               Cancel
             </Button>
             <Button
-              onClick={handleCreateSpace}
-              disabled={newChatType === "SPACE" ? !newSpaceName.trim() : !selectedContact}
+              onClick={() => void handleCreateSpace()}
+              disabled={isCreating || (newChatType === "SPACE" ? !newSpaceName.trim() : !selectedContact)}
               className="text-xs"
             >
-              {newChatType === "SPACE" ? "Create Space" : "Start Chat"}
+              {isCreating ? "Creating…" : newChatType === "SPACE" ? "Create Space" : "Start Chat"}
             </Button>
           </DialogFooter>
         </DialogContent>

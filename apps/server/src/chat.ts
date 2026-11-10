@@ -31,7 +31,7 @@ export class GoogleChatClient {
     });
   }
 
-  async listSpaces(): Promise<ChatSpace[]> {
+  async listSpaces(known?: Map<string, ChatSpace>): Promise<ChatSpace[]> {
     const res = await this.fetch("/spaces?pageSize=100");
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -74,6 +74,14 @@ export class GoogleChatClient {
           space.name === "Direct Message" ||
           (myNameNorm && space.name.toLowerCase().trim() === myNameNorm))
       ) {
+        // A previous sync already resolved this DM's participant: reuse it instead of
+        // paying for another members call.
+        const knownSpace = known?.get(space.id);
+        if (knownSpace?.name && knownSpace.name !== "Direct Message") {
+          space.name = knownSpace.name;
+          if (knownSpace.avatarUrl) space.avatarUrl = knownSpace.avatarUrl;
+          continue;
+        }
         try {
           const membersRes = await this.fetch(`/${space.id}/members?pageSize=10`);
           if (membersRes.ok) {
@@ -131,6 +139,15 @@ export class GoogleChatClient {
     const activeTop = spaces.slice(0, 15);
     await Promise.allSettled(
       activeTop.map(async (sp) => {
+        // Nothing changed since the last sync for this space: reuse the cached snippet
+        // instead of asking Google again.
+        const knownSpace = known?.get(sp.id);
+        if (knownSpace && knownSpace.lastMessageTime === sp.lastMessageTime && knownSpace.lastMessageSnippet) {
+          sp.lastMessageSnippet = knownSpace.lastMessageSnippet;
+          if (!sp.name || sp.name === "Direct Message") sp.name = knownSpace.name;
+          if (!sp.avatarUrl && knownSpace.avatarUrl) sp.avatarUrl = knownSpace.avatarUrl;
+          return;
+        }
         try {
           const mRes = await this.fetch(`/${sp.id}/messages?pageSize=1&orderBy=createTime%20desc`);
           if (mRes.ok) {
@@ -685,6 +702,143 @@ function ensureSeedData(store: MailStore, currentUserEmail: string | null) {
   }
 }
 
+/** How long a spaces snapshot is considered fresh before a background revalidation. */
+export const SPACES_TTL_MS = 60_000;
+/** How long a message list snapshot is considered fresh before a background revalidation. */
+export const MESSAGES_TTL_MS = 15_000;
+
+/**
+ * Per-store (per-account) sync bookkeeping for stale-while-revalidate reads.
+ * The store is the identity: one SQLite database per account.
+ */
+interface ChatSyncState {
+  /** 0 means "never synced from Google" — the first read must wait for the fetch. */
+  spacesSyncedAt: number;
+  spacesInflight: Promise<void> | null;
+  messagesSyncedAt: Map<string, number>;
+  messagesInflight: Map<string, Promise<void>>;
+  lastApiStatus: ChatApiStatus;
+}
+
+const chatSyncStates = new WeakMap<MailStore, ChatSyncState>();
+
+function chatSyncState(store: MailStore): ChatSyncState {
+  let state = chatSyncStates.get(store);
+  if (!state) {
+    state = {
+      spacesSyncedAt: 0,
+      spacesInflight: null,
+      messagesSyncedAt: new Map(),
+      messagesInflight: new Map(),
+      lastApiStatus: { connected: true },
+    };
+    chatSyncStates.set(store, state);
+  }
+  return state;
+}
+
+function chatApiStatusFromError(err: unknown): ChatApiStatus {
+  const msg = err instanceof Error ? err.message : String(err);
+  const isServiceDisabled =
+    msg.includes("SERVICE_DISABLED") ||
+    msg.includes("has not been used in project") ||
+    msg.includes("or it is disabled");
+  const activationMatch = msg.match(
+    /https:\/\/console\.developers\.google\.com\/apis\/api\/chat\.googleapis\.com\/overview\?project=\d+/,
+  );
+  return {
+    connected: false,
+    disabled: isServiceDisabled,
+    activationUrl: activationMatch
+      ? activationMatch[0]
+      : "https://console.developers.google.com/apis/api/chat.googleapis.com/overview",
+    message: isServiceDisabled
+      ? "Google Chat API is not enabled in your Google Cloud Console project. Enable it to sync live conversations."
+      : msg,
+  };
+}
+
+/**
+ * Sync spaces from Google into the store. Concurrent callers share one in-flight
+ * promise, so a burst of requests costs a single round of API calls. Never rejects.
+ * Emits `chat-spaces-changed` only when the stored snapshot actually changed.
+ */
+function refreshChatSpaces(client: GoogleChatClient, ctx: ChatRequestContext, state: ChatSyncState): Promise<void> {
+  if (state.spacesInflight) return state.spacesInflight;
+  const before = JSON.stringify(ctx.store.listChatSpaces());
+  const run = (async () => {
+    try {
+      const known = new Map(ctx.store.listChatSpaces().map((space) => [space.id, space]));
+      const liveSpaces = await client.listSpaces(known);
+      if (liveSpaces.length > 0) {
+        // Remove mock seed spaces so only genuine account data displays
+        for (const seedSpace of INITIAL_CHAT_SPACES) {
+          ctx.store.deleteChatSpace(seedSpace.id);
+        }
+        ctx.store.deleteChatSpace(SEED_SPACE_ID);
+        ctx.store.upsertChatSpaces(liveSpaces);
+      }
+      state.lastApiStatus = { connected: true };
+    } catch (err) {
+      state.lastApiStatus = chatApiStatusFromError(err);
+    } finally {
+      state.spacesSyncedAt = Date.now();
+      state.spacesInflight = null;
+    }
+    try {
+      if (JSON.stringify(ctx.store.listChatSpaces()) !== before) {
+        ctx.events.send({ type: "chat-spaces-changed" });
+      }
+    } catch {
+      // A failed notification must never surface as an unhandled rejection.
+    }
+  })();
+  state.spacesInflight = run;
+  return run;
+}
+
+/**
+ * Sync one space's messages from Google into the store, deduped per space and
+ * never rejecting. Emits `chat-messages-changed` only when the stored list changed.
+ */
+function refreshChatMessages(
+  client: GoogleChatClient,
+  ctx: ChatRequestContext,
+  state: ChatSyncState,
+  spaceId: string,
+): Promise<void> {
+  const existing = state.messagesInflight.get(spaceId);
+  if (existing) return existing;
+  const before = JSON.stringify(ctx.store.listChatMessages(spaceId));
+  const run = (async () => {
+    try {
+      const liveMsgs = await client.listMessages(spaceId);
+      if (liveMsgs.length > 0) {
+        ctx.store.upsertChatMessages(liveMsgs);
+      }
+    } catch {
+      // Use cached messages
+    } finally {
+      state.messagesSyncedAt.set(spaceId, Date.now());
+      state.messagesInflight.delete(spaceId);
+    }
+    try {
+      if (JSON.stringify(ctx.store.listChatMessages(spaceId)) !== before) {
+        ctx.events.send({ type: "chat-messages-changed", spaceId });
+      }
+    } catch {
+      // A failed notification must never surface as an unhandled rejection.
+    }
+  })();
+  state.messagesInflight.set(spaceId, run);
+  return run;
+}
+
+/** Seed spaces and local spaces never hit the Google API. */
+function isLocalSpace(spaceId: string) {
+  return spaceId.startsWith("spaces/local-") || spaceId.startsWith("spaces/dm-") || spaceId.startsWith("spaces/space-");
+}
+
 export async function handleChatRequest(req: Request, ctx: ChatRequestContext): Promise<Response | null> {
   const url = new URL(req.url);
   if (!url.pathname.startsWith("/api/chat/")) return null;
@@ -697,43 +851,25 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
 
   // GET /api/chat/spaces
   if (path === "spaces" && req.method === "GET") {
-    let apiStatus: ChatApiStatus = { connected: true };
-    if (client) {
-      try {
-        const liveSpaces = await client.listSpaces();
-        if (liveSpaces.length > 0) {
-          // Remove mock seed spaces so only genuine account data displays
-          for (const seedSpace of INITIAL_CHAT_SPACES) {
-            ctx.store.deleteChatSpace(seedSpace.id);
-          }
-          ctx.store.deleteChatSpace(SEED_SPACE_ID);
-          ctx.store.upsertChatSpaces(liveSpaces);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const isServiceDisabled =
-          msg.includes("SERVICE_DISABLED") ||
-          msg.includes("has not been used in project") ||
-          msg.includes("or it is disabled");
-        const activationMatch = msg.match(
-          /https:\/\/console\.developers\.google\.com\/apis\/api\/chat\.googleapis\.com\/overview\?project=\d+/,
-        );
-        apiStatus = {
-          connected: false,
-          disabled: isServiceDisabled,
-          activationUrl: activationMatch
-            ? activationMatch[0]
-            : "https://console.developers.google.com/apis/api/chat.googleapis.com/overview",
-          message: isServiceDisabled
-            ? "Google Chat API is not enabled in your Google Cloud Console project. Enable it to sync live conversations."
-            : msg,
-        };
-      }
-    } else {
-      apiStatus = { connected: false, message: "No Google account configured" };
+    const state = chatSyncState(ctx.store);
+    if (!client) {
+      state.lastApiStatus = { connected: false, message: "No Google account configured" };
+      const spaces = ctx.store.listChatSpaces();
+      return Response.json({ spaces, apiStatus: state.lastApiStatus } satisfies ListChatSpacesResponse);
     }
+
+    const forceRefresh = url.searchParams.get("refresh") === "1";
+    const stale = state.spacesSyncedAt === 0 || Date.now() - state.spacesSyncedAt > SPACES_TTL_MS;
+    if (state.spacesSyncedAt === 0 || forceRefresh) {
+      // First paint must show real data, so this read waits for Google.
+      await refreshChatSpaces(client, ctx, state);
+    } else if (stale && !state.spacesInflight) {
+      // Stale-while-revalidate: answer from SQLite now, sync in the background.
+      void refreshChatSpaces(client, ctx, state);
+    }
+
     const spaces = ctx.store.listChatSpaces();
-    return Response.json({ spaces, apiStatus } satisfies ListChatSpacesResponse);
+    return Response.json({ spaces, apiStatus: state.lastApiStatus } satisfies ListChatSpacesResponse);
   }
 
   // POST /api/chat/spaces
@@ -777,19 +913,17 @@ export async function handleChatRequest(req: Request, ctx: ChatRequestContext): 
       return Response.json({ error: "spaceId is required" }, { status: 400 });
     }
 
-    if (
-      client &&
-      !spaceId.startsWith("spaces/local-") &&
-      !spaceId.startsWith("spaces/dm-") &&
-      !spaceId.startsWith("spaces/space-")
-    ) {
-      try {
-        const liveMsgs = await client.listMessages(spaceId);
-        if (liveMsgs.length > 0) {
-          ctx.store.upsertChatMessages(liveMsgs);
-        }
-      } catch {
-        // Use cached messages
+    if (client && !isLocalSpace(spaceId)) {
+      const state = chatSyncState(ctx.store);
+      const syncedAt = state.messagesSyncedAt.get(spaceId) ?? 0;
+      const forceRefresh = url.searchParams.get("refresh") === "1";
+      const stale = syncedAt === 0 || Date.now() - syncedAt > MESSAGES_TTL_MS;
+      if (syncedAt === 0 || forceRefresh) {
+        // First open of a space must show real messages, so this read waits for Google.
+        await refreshChatMessages(client, ctx, state, spaceId);
+      } else if (stale && !state.messagesInflight.has(spaceId)) {
+        // Stale-while-revalidate: answer from SQLite now, sync in the background.
+        void refreshChatMessages(client, ctx, state, spaceId);
       }
     }
 

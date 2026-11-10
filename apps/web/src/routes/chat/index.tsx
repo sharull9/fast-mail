@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
 import { chatSpacesQuery } from "@/lib/data";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/chat/")({
   validateSearch: (search: Record<string, unknown>): { space?: string } => ({
@@ -45,8 +46,13 @@ function ChatIndexRoute() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-1 items-center justify-center text-xs text-muted-foreground">
-        Loading conversations...
+      <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 p-6" aria-busy="true">
+        <Skeleton className="size-12 rounded-2xl" />
+        <div className="w-full max-w-sm space-y-3">
+          <Skeleton className="mx-auto h-4 w-44" />
+          <Skeleton className="mx-auto h-3 w-64 max-w-full" />
+          <Skeleton className="mx-auto h-3 w-52 max-w-full" />
+        </div>
       </div>
     );
   }
